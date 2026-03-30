@@ -21,9 +21,6 @@ AUDIO_SILENCE_THRESHOLD = float(os.getenv("AUDIO_SILENCE_THRESHOLD", "0.005"))
 AUDIO_SILENCE_DURATION_MS = int(os.getenv("AUDIO_SILENCE_DURATION_MS", "300"))
 AUDIO_OVERLAP_SECONDS = float(os.getenv("AUDIO_OVERLAP_SECONDS", "1.0"))
 
-# Microphone device name (substring match). Leave empty to auto-detect loudest mic.
-AUDIO_MIC_DEVICE = os.getenv("AUDIO_MIC_DEVICE", "")
-
 # Web server
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.getenv("WEB_PORT", "8765"))

@@ -19,8 +19,8 @@ FRAME_SIZE = 4800  # 100ms at 48kHz
 
 def discover_all_devices():
     """
-    Discover all WASAPI audio devices at startup.
-    Returns list of device dicts with keys: index, name, type, channels, peak.
+    Discover all WASAPI audio devices at startup. No probing — just enumerates.
+    Returns list of device dicts with keys: index, name, type, channels.
     """
     p = pyaudio.PyAudio()
     wasapi = p.get_host_api_info_by_type(pyaudio.paWASAPI)
@@ -40,41 +40,19 @@ def discover_all_devices():
                 "name": dev["name"],
                 "type": "loopback",
                 "channels": dev["maxInputChannels"],
-                "peak": 0.0,
             })
         elif has_input:
-            # Probe mic for 0.5s to get signal level
-            peak = 0.0
-            try:
-                stream = p.open(
-                    format=pyaudio.paFloat32, channels=1, rate=NATIVE_RATE,
-                    input=True, input_device_index=i, frames_per_buffer=FRAME_SIZE,
-                )
-                frames = []
-                for _ in range(5):
-                    data = stream.read(FRAME_SIZE, exception_on_overflow=False)
-                    frames.append(np.frombuffer(data, dtype=np.float32))
-                stream.stop_stream()
-                stream.close()
-                peak = float(np.max(np.abs(np.concatenate(frames))))
-            except Exception:
-                pass
-
             devices.append({
                 "index": i,
                 "name": dev["name"],
                 "type": "microphone",
                 "channels": 1,
-                "peak": round(peak, 4),
             })
 
     p.terminate()
 
     for d in devices:
-        status = ""
-        if d["type"] == "microphone":
-            status = " (active)" if d["peak"] > 0.005 else " (silent)"
-        print(f"  [{d['index']}] {d['type']:10s} {d['name']}{status}")
+        print(f"  [{d['index']}] {d['type']:10s} {d['name']}")
 
     return devices
 

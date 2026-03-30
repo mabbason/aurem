@@ -188,16 +188,6 @@ header h1 { font-size: 18px; font-weight: 600; }
     color: var(--text);
 }
 
-.device-level {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background: #555;
-}
-.device-level.active { background: var(--accent-green); }
-.device-level.silent { background: #555; }
-
 .device-reset {
     font-size: 11px;
     font-style: italic;

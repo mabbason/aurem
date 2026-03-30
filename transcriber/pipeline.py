@@ -72,19 +72,16 @@ class TranscriptionPipeline:
         return {"id": session_id, "started_at": self.session["started_at"]}
 
     def _default_devices(self) -> list[int]:
-        """Default selection: first loopback + loudest mic."""
+        """Default selection: first loopback + first mic."""
         selected = []
         for d in self.available_devices:
             if d["type"] == "loopback":
                 selected.append(d["index"])
                 break
-        best_mic = max(
-            (d for d in self.available_devices if d["type"] == "microphone"),
-            key=lambda d: d["peak"],
-            default=None,
-        )
-        if best_mic:
-            selected.append(best_mic["index"])
+        for d in self.available_devices:
+            if d["type"] == "microphone":
+                selected.append(d["index"])
+                break
         return selected
 
     def stop_session(self) -> dict | None:

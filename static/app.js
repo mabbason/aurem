@@ -129,8 +129,6 @@ function renderDeviceList(selectedIndices) {
     const items = visible.map(d => {
         const checked = selectedIndices.has(d.index) ? 'checked' : '';
         const icon = d.type === 'loopback' ? '\u{1F50A}' : '\u{1F3A4}';
-        const levelClass = d.type === 'microphone' ? (d.peak > 0.005 ? 'active' : 'silent') : '';
-        const levelDot = d.type === 'microphone' ? `<span class="device-level ${levelClass}" title="peak: ${d.peak}"></span>` : '';
         const shortName = d.name.replace(/\[Loopback\]/i, '').replace(/\(.*?\)/g, '').trim();
         const disabledAttr = isRecording ? 'disabled' : '';
         return `
@@ -140,7 +138,6 @@ function renderDeviceList(selectedIndices) {
                            onchange="onDeviceToggle()" ${disabledAttr}>
                     <span class="device-icon">${icon}</span>
                     <span class="device-name">${shortName}</span>
-                    ${levelDot}
                 </label>
                 <button class="btn-ignore" onclick="ignoreDevice(${d.index})" title="Ignore">&times;</button>
             </div>

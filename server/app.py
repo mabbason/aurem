@@ -34,7 +34,6 @@ async def list_devices():
             "index": d["index"],
             "name": d["name"],
             "type": d["type"],
-            "peak": d["peak"],
             "default": d["index"] in default_indices,
         })
     return JSONResponse(devices)
