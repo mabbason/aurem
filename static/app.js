@@ -61,6 +61,33 @@ function connectWebSocket() {
 
 // --- Device selection ---
 
+function getIgnoredDevices() {
+    const saved = localStorage.getItem('ignoredDevices');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+}
+
+function saveIgnoredDevices(ignored) {
+    localStorage.setItem('ignoredDevices', JSON.stringify([...ignored]));
+}
+
+function ignoreDevice(index) {
+    const ignored = getIgnoredDevices();
+    ignored.add(index);
+    saveIgnoredDevices(ignored);
+
+    // Also uncheck it
+    const selected = getSelectedDeviceIndices().filter(i => i !== index);
+    localStorage.setItem('selectedDevices', JSON.stringify(selected));
+
+    renderDeviceList(new Set(selected));
+}
+
+function resetIgnoredDevices() {
+    localStorage.removeItem('ignoredDevices');
+    const selected = new Set(getSelectedDeviceIndices());
+    renderDeviceList(selected);
+}
+
 async function loadDevices() {
     const resp = await fetch('/api/devices');
     availableDevices = await resp.json();
@@ -70,7 +97,6 @@ async function loadDevices() {
     let selectedIndices;
     if (saved) {
         selectedIndices = new Set(JSON.parse(saved));
-        // Validate saved indices still exist
         const validIndices = new Set(availableDevices.map(d => d.index));
         selectedIndices = new Set([...selectedIndices].filter(i => validIndices.has(i)));
         if (selectedIndices.size === 0) {
@@ -91,23 +117,41 @@ function renderDeviceList(selectedIndices) {
         return;
     }
 
-    list.innerHTML = availableDevices.map(d => {
+    const ignored = getIgnoredDevices();
+    const visible = availableDevices.filter(d => !ignored.has(d.index));
+
+    if (visible.length === 0) {
+        list.innerHTML = '<p class="empty">All sources hidden</p>' +
+            '<p class="device-reset" onclick="resetIgnoredDevices()">Reset audio sources</p>';
+        return;
+    }
+
+    const items = visible.map(d => {
         const checked = selectedIndices.has(d.index) ? 'checked' : '';
         const icon = d.type === 'loopback' ? '\u{1F50A}' : '\u{1F3A4}';
         const levelClass = d.type === 'microphone' ? (d.peak > 0.005 ? 'active' : 'silent') : '';
         const levelDot = d.type === 'microphone' ? `<span class="device-level ${levelClass}" title="peak: ${d.peak}"></span>` : '';
-        // Shorten name for display
         const shortName = d.name.replace(/\[Loopback\]/i, '').replace(/\(.*?\)/g, '').trim();
+        const disabledAttr = isRecording ? 'disabled' : '';
         return `
-            <label class="device-item" title="${d.name}">
-                <input type="checkbox" value="${d.index}" ${checked}
-                       onchange="onDeviceToggle()" ${isRecording ? 'disabled' : ''}>
-                <span class="device-icon">${icon}</span>
-                <span class="device-name">${shortName}</span>
-                ${levelDot}
-            </label>
+            <div class="device-item" title="${d.name}">
+                <label class="device-label">
+                    <input type="checkbox" value="${d.index}" ${checked}
+                           onchange="onDeviceToggle()" ${disabledAttr}>
+                    <span class="device-icon">${icon}</span>
+                    <span class="device-name">${shortName}</span>
+                    ${levelDot}
+                </label>
+                <button class="btn-ignore" onclick="ignoreDevice(${d.index})" title="Ignore">&times;</button>
+            </div>
         `;
     }).join('');
+
+    const resetLink = ignored.size > 0
+        ? '<p class="device-reset" onclick="resetIgnoredDevices()">Reset audio sources</p>'
+        : '';
+
+    list.innerHTML = items + resetLink;
 }
 
 function getSelectedDeviceIndices() {

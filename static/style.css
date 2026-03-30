@@ -130,18 +130,47 @@ header h1 { font-size: 18px; font-weight: 600; }
 .device-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
+    padding: 0 4px 0 0;
     border-radius: 4px;
     font-size: 12px;
-    cursor: pointer;
     transition: background 0.15s;
 }
 .device-item:hover { background: rgba(255,255,255,0.05); }
 
+.device-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    padding: 5px 4px 5px 8px;
+    cursor: pointer;
+    overflow: hidden;
+}
+
 .device-item input[type="checkbox"] {
     accent-color: var(--accent-green);
     cursor: pointer;
+}
+
+.btn-ignore {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 20px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+    flex-shrink: 0;
+}
+.device-item:hover .btn-ignore { opacity: 0.4; }
+.btn-ignore:hover {
+    opacity: 1 !important;
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
 }
 
 .device-icon {
@@ -168,6 +197,16 @@ header h1 { font-size: 18px; font-weight: 600; }
 }
 .device-level.active { background: var(--accent-green); }
 .device-level.silent { background: #555; }
+
+.device-reset {
+    font-size: 11px;
+    font-style: italic;
+    color: var(--text-dim);
+    padding: 4px 12px 6px;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.device-reset:hover { color: var(--text); }
 
 .session-list { flex: 1; overflow-y: auto; }
 
