@@ -13,8 +13,13 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8_float32")
 
 # Audio settings
 AUDIO_SAMPLE_RATE = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
-AUDIO_CHUNK_SECONDS = int(os.getenv("AUDIO_CHUNK_SECONDS", "5"))
-AUDIO_OVERLAP_SECONDS = float(os.getenv("AUDIO_OVERLAP_SECONDS", "0.5"))
+
+# VAD-based chunking: split on silence pauses instead of fixed intervals
+AUDIO_MIN_CHUNK_SECONDS = float(os.getenv("AUDIO_MIN_CHUNK_SECONDS", "2"))
+AUDIO_MAX_CHUNK_SECONDS = float(os.getenv("AUDIO_MAX_CHUNK_SECONDS", "15"))
+AUDIO_SILENCE_THRESHOLD = float(os.getenv("AUDIO_SILENCE_THRESHOLD", "0.008"))
+AUDIO_SILENCE_DURATION_MS = int(os.getenv("AUDIO_SILENCE_DURATION_MS", "400"))
+AUDIO_OVERLAP_SECONDS = float(os.getenv("AUDIO_OVERLAP_SECONDS", "1.0"))
 
 # Web server
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")

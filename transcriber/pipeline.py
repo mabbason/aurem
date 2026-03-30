@@ -1,13 +1,12 @@
 """
 Real-time transcription pipeline.
 Orchestrates audio capture, transcription, diarization, and WebSocket broadcasting.
-Runs as a single process — audio capture in a background thread, ML in a thread pool.
+Uses word-level dedup to merge overlapping chunk edges cleanly.
 """
 
 import asyncio
 import json
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -27,7 +26,7 @@ class TranscriptionPipeline:
         self.websocket_clients = set()
         self._loop = None
         self._processing_lock = None
-        self._last_end_time = 0.0  # Track last segment end to deduplicate overlaps
+        self._prev_words = []  # Word-level output from previous chunk for dedup
 
     def load_models(self):
         self.transcriber.load_model()
@@ -49,9 +48,8 @@ class TranscriptionPipeline:
 
         self._loop = asyncio.get_event_loop()
         self._processing_lock = asyncio.Lock()
-        self._last_end_time = 0.0
+        self._prev_words = []
 
-        # Start audio capture thread
         self.capture = AudioCapture(on_chunk_ready=self._on_chunk_from_thread)
         self.capture.start()
 
@@ -62,14 +60,11 @@ class TranscriptionPipeline:
         if not self.session:
             return None
 
-        # Stop audio capture
         if self.capture:
             self.capture.stop()
             self.capture = None
 
         self.session["ended_at"] = datetime.now().isoformat()
-
-        # Save final transcript
         self._save_transcript()
 
         result = {
@@ -84,15 +79,14 @@ class TranscriptionPipeline:
         return result
 
     def _on_chunk_from_thread(self, audio: np.ndarray, chunk_index: int, offset: float):
-        """Called from the capture thread — schedules async processing on the event loop."""
         if self._loop and self.session:
             peak = np.max(np.abs(audio))
-            print(f"Chunk {chunk_index}: {len(audio)} samples, peak={peak:.4f}, offset={offset:.1f}s")
+            dur = len(audio) / config.AUDIO_SAMPLE_RATE
+            print(f"Chunk {chunk_index}: {dur:.1f}s, peak={peak:.4f}, offset={offset:.1f}s")
             future = asyncio.run_coroutine_threadsafe(
                 self._process_chunk(audio, chunk_index, offset),
                 self._loop,
             )
-            # Check for errors (non-blocking)
             future.add_done_callback(self._chunk_done_callback)
 
     @staticmethod
@@ -109,21 +103,15 @@ class TranscriptionPipeline:
             return
 
         async with self._processing_lock:
-            # Save raw audio chunk
             chunk_path = self.session["dir"] / f"chunk_{chunk_index:04d}.wav"
             sf.write(str(chunk_path), audio, config.AUDIO_SAMPLE_RATE)
 
             peak = np.max(np.abs(audio))
-            # Check if chunk has actual audio (not silence)
             if peak < 0.001:
-                print(f"  Chunk {chunk_index}: silence (peak={peak:.6f}), skipping")
                 return
-
-            print(f"  Chunk {chunk_index}: processing (peak={peak:.4f})...")
 
             loop = asyncio.get_event_loop()
 
-            # Transcribe (runs in thread pool — CPU-bound CUDA call)
             segments = await loop.run_in_executor(
                 None, self.transcriber.transcribe, audio, offset
             )
@@ -131,9 +119,23 @@ class TranscriptionPipeline:
             if not segments:
                 return
 
-            # Diarize — pass chunk-relative times to pyannote
-            chunk_segments = []
+            # Collect all words from this chunk's segments
+            all_words = []
             for seg in segments:
+                all_words.extend(seg.get("words", []))
+
+            # Deduplicate against previous chunk's trailing words
+            deduped_words = self._dedup_words(all_words)
+
+            if not deduped_words:
+                return
+
+            # Rebuild segments from deduped words
+            merged_segments = self._words_to_segments(deduped_words, segments)
+
+            # Diarize
+            chunk_segments = []
+            for seg in merged_segments:
                 chunk_segments.append({
                     **seg,
                     "start": seg["start"] - offset,
@@ -144,21 +146,98 @@ class TranscriptionPipeline:
                 None, self.diarizer.diarize, audio, chunk_segments
             )
 
-            # Restore absolute timestamps and deduplicate overlap
             for seg in diarized:
                 seg["start"] = round(seg["start"] + offset, 1)
                 seg["end"] = round(seg["end"] + offset, 1)
-
-                # Skip segments that fall entirely within already-processed time
-                if seg["end"] <= self._last_end_time:
-                    continue
-                # Adjust start if it overlaps with previous
-                if seg["start"] < self._last_end_time:
-                    seg["start"] = self._last_end_time
-
-                self._last_end_time = seg["end"]
                 self.session["segments"].append(seg)
                 await self._broadcast(seg)
+
+            # Store trailing words for next chunk's dedup
+            self._prev_words = all_words[-20:] if all_words else []
+
+    def _dedup_words(self, new_words: list[dict]) -> list[dict]:
+        """Remove words from the start of new_words that overlap with previous chunk."""
+        if not self._prev_words or not new_words:
+            return new_words
+
+        # Find where the new words stop overlapping with previous words.
+        # Compare by normalized word text and approximate timestamp.
+        prev_texts = [w["word"].strip().lower().rstrip(".,!?") for w in self._prev_words]
+
+        # Find the best alignment: look for a sequence of new words that matches
+        # a suffix of prev_words
+        best_skip = 0
+
+        for skip in range(min(len(new_words), 15)):
+            new_word = new_words[skip]["word"].strip().lower().rstrip(".,!?")
+            # Check if this word matches any of the last prev words
+            if new_word in prev_texts[-10:]:
+                # Check if subsequent words also match (sequence match)
+                match_len = 0
+                for j in range(skip, min(skip + 5, len(new_words))):
+                    nw = new_words[j]["word"].strip().lower().rstrip(".,!?")
+                    if nw in prev_texts:
+                        match_len += 1
+                    else:
+                        break
+
+                if match_len >= 2:
+                    # Found an overlap sequence — skip these words
+                    best_skip = skip + match_len
+
+        if best_skip > 0:
+            skipped = " ".join(w["word"].strip() for w in new_words[:best_skip])
+            print(f"  Dedup: skipped {best_skip} overlapping words: '{skipped}'")
+
+        return new_words[best_skip:]
+
+    def _words_to_segments(self, words: list[dict], original_segments: list[dict]) -> list[dict]:
+        """
+        Rebuild segments from deduped words, preserving natural sentence boundaries
+        from the original Whisper segmentation.
+        """
+        if not words:
+            return []
+
+        # Use original segment boundaries where they align with our word list
+        segments = []
+        word_idx = 0
+
+        for orig_seg in original_segments:
+            seg_words = []
+            orig_seg_words = orig_seg.get("words", [])
+
+            for ow in orig_seg_words:
+                if word_idx >= len(words):
+                    break
+                # Match by timestamp proximity
+                if abs(words[word_idx]["start"] - ow["start"]) < 0.3:
+                    seg_words.append(words[word_idx])
+                    word_idx += 1
+
+            if seg_words:
+                text = "".join(w["word"] for w in seg_words).strip()
+                if text:
+                    segments.append({
+                        "start": seg_words[0]["start"],
+                        "end": seg_words[-1]["end"],
+                        "text": text,
+                        "words": seg_words,
+                    })
+
+        # Any remaining words that didn't match original boundaries
+        if word_idx < len(words):
+            remaining = words[word_idx:]
+            text = "".join(w["word"] for w in remaining).strip()
+            if text:
+                segments.append({
+                    "start": remaining[0]["start"],
+                    "end": remaining[-1]["end"],
+                    "text": text,
+                    "words": remaining,
+                })
+
+        return segments
 
     async def _broadcast(self, segment: dict):
         message = json.dumps({
