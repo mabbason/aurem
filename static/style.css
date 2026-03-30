@@ -220,6 +220,7 @@ header h1 { font-size: 18px; font-weight: 600; }
 }
 
 .session-item:hover { background: var(--surface2); }
+.session-item.active { background: var(--surface2); }
 
 .session-item.active::before {
     content: '';
@@ -230,6 +231,7 @@ header h1 { font-size: 18px; font-weight: 600; }
     width: 3px;
     background: var(--accent);
     border-radius: 0 2px 2px 0;
+    z-index: 1;
 }
 
 .session-row { flex: 1; padding: 8px 8px 8px 12px; cursor: pointer; overflow: hidden; }
@@ -264,22 +266,23 @@ header h1 { font-size: 18px; font-weight: 600; }
 }
 
 .btn-delete {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border: none;
     border-radius: 50%;
     background: transparent;
     color: var(--text-dim);
-    font-size: 16px;
-    line-height: 24px;
+    font-size: 18px;
+    line-height: 28px;
     cursor: pointer;
-    opacity: 0.25;
+    opacity: 0;
     transition: opacity 0.2s, background 0.2s, color 0.2s;
-    margin-right: 10px;
+    margin-right: 8px;
     flex-shrink: 0;
 }
+.session-item:hover .btn-delete { opacity: 0.4; }
 .btn-delete:hover {
-    opacity: 1;
+    opacity: 1 !important;
     background: var(--accent);
     color: white;
 }

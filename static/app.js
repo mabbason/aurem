@@ -305,8 +305,8 @@ async function loadSessions() {
         const active = s.id === viewingSessionId ? ' active' : '';
         return `
             <div class="session-item${active}" data-id="${s.id}">
-                <div class="session-row" onclick="viewSession('${s.id}')">
-                    <div class="session-title" ondblclick="event.stopPropagation(); startRename('${s.id}', this)">${title}</div>
+                <div class="session-row" onclick="sessionClick('${s.id}')" ondblclick="sessionDblClick(event, '${s.id}')">
+                    <div class="session-title">${title}</div>
                     <div class="session-meta">
                         <span class="session-date">${dateStr}</span>
                         <span class="session-duration">${duration}</span>
@@ -318,6 +318,24 @@ async function loadSessions() {
     }).join('');
 }
 
+let clickTimer = null;
+
+function sessionClick(sessionId) {
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
+    clickTimer = setTimeout(() => {
+        clickTimer = null;
+        viewSession(sessionId);
+    }, 250);
+}
+
+function sessionDblClick(event, sessionId) {
+    event.stopPropagation();
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    const item = event.currentTarget.closest('.session-item');
+    const titleEl = item.querySelector('.session-title');
+    startRename(sessionId, titleEl);
+}
+
 function startRename(sessionId, el) {
     const current = el.textContent;
     const input = document.createElement('input');
@@ -325,7 +343,10 @@ function startRename(sessionId, el) {
     input.className = 'rename-input';
     input.value = current;
 
+    let finished = false;
     const finish = async () => {
+        if (finished) return;
+        finished = true;
         const newTitle = input.value.trim();
         if (newTitle && newTitle !== current) {
             await fetch(`/api/sessions/${sessionId}`, {
