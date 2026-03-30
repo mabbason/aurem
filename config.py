@@ -17,7 +17,7 @@ AUDIO_SAMPLE_RATE = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
 # VAD-based chunking: split on silence pauses instead of fixed intervals
 AUDIO_MIN_CHUNK_SECONDS = float(os.getenv("AUDIO_MIN_CHUNK_SECONDS", "2"))
 AUDIO_MAX_CHUNK_SECONDS = float(os.getenv("AUDIO_MAX_CHUNK_SECONDS", "15"))
-AUDIO_SILENCE_THRESHOLD = float(os.getenv("AUDIO_SILENCE_THRESHOLD", "0.008"))
+AUDIO_SILENCE_THRESHOLD = float(os.getenv("AUDIO_SILENCE_THRESHOLD", "0.005"))
 AUDIO_SILENCE_DURATION_MS = int(os.getenv("AUDIO_SILENCE_DURATION_MS", "400"))
 AUDIO_OVERLAP_SECONDS = float(os.getenv("AUDIO_OVERLAP_SECONDS", "1.0"))
 

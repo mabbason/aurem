@@ -220,8 +220,11 @@ class AudioCapture:
                         if idx in self._buffers:
                             chunks.append(self._buffers[idx][:n].copy())
                             self._buffers[idx] = self._buffers[idx][n:]
-                    # Mix: sum and divide by source count
-                    new_audio = np.sum(chunks, axis=0) / len(chunks)
+                    # Mix: sum all sources, clip to [-1, 1] only if needed
+                    new_audio = np.sum(chunks, axis=0)
+                    peak = np.max(np.abs(new_audio))
+                    if peak > 1.0:
+                        new_audio /= peak
 
             mixed_buffer = np.concatenate([mixed_buffer, new_audio])
 
