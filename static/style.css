@@ -256,19 +256,22 @@ header h1 { font-size: 18px; font-weight: 600; }
 }
 
 .btn-delete {
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     border: none;
     border-radius: 50%;
     background: transparent;
     color: var(--text-dim);
-    font-size: 18px;
-    line-height: 28px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 22px;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.2s, background 0.2s, color 0.2s;
     margin-right: 8px;
     flex-shrink: 0;
+    padding: 0;
+    text-align: center;
 }
 .session-item:hover .btn-delete { opacity: 0.4; }
 .btn-delete:hover {
