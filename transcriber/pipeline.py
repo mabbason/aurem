@@ -213,8 +213,10 @@ class TranscriptionPipeline:
         prev_texts = [self._normalize_word(w["word"]) for w in self._prev_words]
         new_texts = [self._normalize_word(w["word"]) for w in new_words]
 
-        # Strategy 1: timestamp — skip words before the last previous word's end
         last_prev_end = self._prev_words[-1]["end"]
+
+        # Strategy 1: timestamp — skip new words that fall before the last
+        # emitted word's end time
         time_skip = 0
         for i, w in enumerate(new_words):
             if w["start"] < last_prev_end - 0.15:
@@ -222,22 +224,33 @@ class TranscriptionPipeline:
             else:
                 break
 
-        # Strategy 2: sequence alignment — find longest contiguous match
+        # Strategy 2: single-word match — if the first new word matches the
+        # last prev word AND its timestamp is near the boundary, skip it
+        single_skip = 0
+        for i in range(min(len(new_words), 3)):
+            nw = new_texts[i]
+            # Check against last few prev words
+            for pw in prev_texts[-5:]:
+                if nw == pw and new_words[i]["start"] <= last_prev_end + 0.5:
+                    single_skip = i + 1
+                    break
+            if single_skip <= i:
+                break  # Stop if this word didn't match
+
+        # Strategy 3: sequence alignment — find longest contiguous match
         # between a suffix of prev_texts and a prefix of new_texts
         seq_skip = 0
         for start_p in range(max(0, len(prev_texts) - 15), len(prev_texts)):
-            # Try to align prev_texts[start_p:] with new_texts[0:]
             match_len = 0
             for j in range(min(len(prev_texts) - start_p, len(new_texts))):
                 if prev_texts[start_p + j] == new_texts[j]:
                     match_len += 1
                 else:
                     break
-
             if match_len >= 2:
                 seq_skip = max(seq_skip, match_len)
 
-        # Also check: new words starting at offset > 0 matching prev suffix
+        # Also check offset alignments
         for start_n in range(1, min(len(new_texts), 8)):
             for start_p in range(max(0, len(prev_texts) - 10), len(prev_texts)):
                 match_len = 0
@@ -249,11 +262,11 @@ class TranscriptionPipeline:
                 if match_len >= 2:
                     seq_skip = max(seq_skip, start_n + match_len)
 
-        best_skip = max(time_skip, seq_skip)
+        best_skip = max(time_skip, single_skip, seq_skip)
 
         if best_skip > 0:
             skipped = " ".join(w["word"].strip() for w in new_words[:best_skip])
-            print(f"  Dedup: skipped {best_skip} words (time={time_skip}, seq={seq_skip}): '{skipped}'")
+            print(f"  Dedup: skipped {best_skip} words (time={time_skip}, single={single_skip}, seq={seq_skip}): '{skipped}'")
 
         return new_words[best_skip:]
 
