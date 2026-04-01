@@ -3,6 +3,7 @@ FastAPI web server with WebSocket support for real-time transcription display.
 """
 
 import json
+import httpx
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -10,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
+from server.ai_config import load_ai_config, save_ai_config, test_ai_connection, generate_summary, generate_lessons
 
 from transcriber.pipeline import TranscriptionPipeline
 
@@ -145,6 +147,78 @@ async def export_session(session_id: str, fmt: str):
         )
 
     return JSONResponse({"error": f"Unknown format: {fmt}"}, status_code=400)
+
+
+@app.get("/api/ai-config")
+async def get_ai_config():
+    cfg = load_ai_config()
+    # Never send the full API key to the frontend
+    if cfg.get("api_key"):
+        key = cfg["api_key"]
+        cfg["api_key_preview"] = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
+    cfg.pop("api_key", None)
+    return JSONResponse(cfg)
+
+
+@app.post("/api/ai-config")
+async def set_ai_config(request: Request):
+    body = await request.json()
+    current = load_ai_config()
+
+    # If api_key not provided or empty, keep existing
+    if not body.get("api_key"):
+        body["api_key"] = current.get("api_key", "")
+
+    save_ai_config(body)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/ai-config/test")
+async def test_config():
+    cfg = load_ai_config()
+    result = await test_ai_connection(cfg)
+    return JSONResponse(result)
+
+
+@app.post("/api/sessions/{session_id}/export/summary")
+async def export_summary(session_id: str):
+    data = pipeline.get_session_transcript(session_id)
+    if data is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    cfg = load_ai_config()
+    if not cfg.get("provider"):
+        return JSONResponse({"error": "AI not configured"}, status_code=400)
+
+    result = await generate_summary(cfg, data)
+    if "error" in result:
+        return JSONResponse(result, status_code=500)
+    return JSONResponse(result)
+
+
+@app.post("/api/sessions/{session_id}/export/lessons")
+async def export_lessons(session_id: str):
+    data = pipeline.get_session_transcript(session_id)
+    if data is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    cfg = load_ai_config()
+    if not cfg.get("provider"):
+        return JSONResponse({"error": "AI not configured"}, status_code=400)
+
+    result = await generate_lessons(cfg, data)
+    if "error" in result:
+        return JSONResponse(result, status_code=500)
+    return JSONResponse(result)
+
+
+@app.get("/api/diarization/status")
+async def diarization_status():
+    from transcriber.diarization import DIARIZATION_AVAILABLE
+    return JSONResponse({
+        "available": DIARIZATION_AVAILABLE,
+        "hf_token_set": bool(config.HF_TOKEN),
+    })
 
 
 @app.websocket("/ws")

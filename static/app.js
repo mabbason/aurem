@@ -418,10 +418,316 @@ async function pollStatus() {
     }
 }
 
+// --- AI Config ---
+
+let aiConfigured = false;
+let diarizationAvailable = false;
+
+const API_MODELS = {
+    anthropic: [
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+    ],
+    openai: [
+        { id: 'gpt-4o', name: 'GPT-4o' },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    ],
+};
+
+async function loadAiConfig() {
+    try {
+        const resp = await fetch('/api/ai-config');
+        const cfg = await resp.json();
+        aiConfigured = !!cfg.provider;
+        updateAiExportButtons();
+        return cfg;
+    } catch (e) {
+        return {};
+    }
+}
+
+function updateAiExportButtons() {
+    const btnSummary = document.getElementById('btn-summary');
+    const btnLessons = document.getElementById('btn-lessons');
+
+    if (aiConfigured) {
+        btnSummary.disabled = false;
+        btnSummary.title = 'Generate AI summary';
+    } else {
+        btnSummary.disabled = true;
+        btnSummary.title = 'Configure AI to unlock';
+    }
+
+    if (aiConfigured && diarizationAvailable) {
+        btnLessons.disabled = false;
+        btnLessons.title = 'Generate lesson notes from transcript';
+    } else if (aiConfigured && !diarizationAvailable) {
+        // Allow lessons even without diarization — speaker labels will just be generic
+        btnLessons.disabled = false;
+        btnLessons.title = 'Generate lesson notes (speaker labels unavailable without diarization)';
+    } else {
+        btnLessons.disabled = true;
+        btnLessons.title = 'Configure AI to unlock';
+    }
+}
+
+async function loadDiarizationStatus() {
+    try {
+        const resp = await fetch('/api/diarization/status');
+        const data = await resp.json();
+        diarizationAvailable = data.available;
+        updateAiExportButtons();
+
+        const el = document.getElementById('diarization-status');
+        if (data.available) {
+            el.innerHTML = 'Speakers: <span class="active">On</span>';
+        } else if (data.hf_token_set) {
+            el.innerHTML = 'Speakers: <span class="inactive">Loading failed</span>';
+        } else {
+            el.innerHTML = 'Speakers: <span class="inactive">Off</span>';
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+async function openConfigModal() {
+    const modal = document.getElementById('config-modal');
+    modal.style.display = 'flex';
+
+    const cfg = await loadAiConfig();
+    document.getElementById('test-result').textContent = '';
+
+    // Reset toggle buttons
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('ollama-settings').style.display = 'none';
+    document.getElementById('api-settings').style.display = 'none';
+
+    if (cfg.provider === 'ollama') {
+        selectProvider('ollama', false);
+        document.getElementById('ollama-url').value = cfg.ollama_url || 'http://localhost:11434';
+        // Fetch models then select saved one
+        await fetchOllamaModels();
+        if (cfg.ollama_model) {
+            document.getElementById('ollama-model').value = cfg.ollama_model;
+        }
+    } else if (cfg.provider === 'api') {
+        selectProvider('api', false);
+        document.getElementById('api-provider').value = cfg.api_provider || 'anthropic';
+        document.getElementById('api-key').value = '';
+        document.getElementById('api-key-preview').textContent = cfg.api_key_preview
+            ? `Current key: ${cfg.api_key_preview}`
+            : '';
+        updateApiModels();
+        if (cfg.api_model) {
+            document.getElementById('api-model').value = cfg.api_model;
+        }
+    }
+}
+
+function closeConfigModal() {
+    document.getElementById('config-modal').style.display = 'none';
+}
+
+function selectProvider(provider, clearTest = true) {
+    document.querySelectorAll('.toggle-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.provider === provider);
+    });
+
+    document.getElementById('ollama-settings').style.display = provider === 'ollama' ? 'block' : 'none';
+    document.getElementById('api-settings').style.display = provider === 'api' ? 'block' : 'none';
+
+    if (clearTest) {
+        document.getElementById('test-result').textContent = '';
+    }
+
+    if (provider === 'ollama') {
+        fetchOllamaModels();
+    }
+}
+
+function getSelectedProvider() {
+    const active = document.querySelector('.toggle-btn.active');
+    return active ? active.dataset.provider : '';
+}
+
+async function fetchOllamaModels() {
+    const select = document.getElementById('ollama-model');
+    const url = document.getElementById('ollama-url').value.trim();
+
+    select.innerHTML = '<option value="">Loading...</option>';
+
+    try {
+        const resp = await fetch(`${url}/api/tags`);
+        const data = await resp.json();
+        const models = data.models || [];
+
+        if (models.length === 0) {
+            select.innerHTML = '<option value="">No models found</option>';
+            return;
+        }
+
+        select.innerHTML = models.map(m =>
+            `<option value="${m.name}">${m.name}</option>`
+        ).join('');
+    } catch (e) {
+        select.innerHTML = '<option value="">Cannot reach Ollama</option>';
+    }
+}
+
+function updateApiModels() {
+    const provider = document.getElementById('api-provider').value;
+    const select = document.getElementById('api-model');
+    const models = API_MODELS[provider] || [];
+
+    select.innerHTML = models.map(m =>
+        `<option value="${m.id}">${m.name}</option>`
+    ).join('');
+}
+
+async function testConnection() {
+    const resultEl = document.getElementById('test-result');
+    const btn = document.getElementById('btn-test');
+    resultEl.textContent = 'Testing...';
+    resultEl.className = 'test-result';
+    btn.disabled = true;
+
+    // Save config first so the backend has the latest
+    await saveConfig(true);
+
+    try {
+        const resp = await fetch('/api/ai-config/test', { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.ok) {
+            resultEl.textContent = data.message || 'Connected!';
+            resultEl.className = 'test-result success';
+        } else {
+            resultEl.textContent = data.error || 'Connection failed';
+            resultEl.className = 'test-result error';
+        }
+    } catch (e) {
+        resultEl.textContent = 'Request failed';
+        resultEl.className = 'test-result error';
+    }
+
+    btn.disabled = false;
+}
+
+async function saveConfig(silent = false) {
+    const provider = getSelectedProvider();
+    const body = { provider };
+
+    if (provider === 'ollama') {
+        body.ollama_url = document.getElementById('ollama-url').value.trim();
+        body.ollama_model = document.getElementById('ollama-model').value;
+    } else if (provider === 'api') {
+        body.api_provider = document.getElementById('api-provider').value;
+        body.api_model = document.getElementById('api-model').value;
+        const keyInput = document.getElementById('api-key').value.trim();
+        if (keyInput) body.api_key = keyInput;
+    }
+
+    await fetch('/api/ai-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+
+    await loadAiConfig();
+
+    if (!silent) {
+        closeConfigModal();
+        showToast('AI configuration saved');
+    }
+}
+
+// --- Summary Export ---
+
+async function exportSummary() {
+    if (!viewingSessionId || !aiConfigured) return;
+
+    const modal = document.getElementById('summary-modal');
+    const content = document.getElementById('summary-content');
+    modal.style.display = 'flex';
+    content.innerHTML = '<div class="summary-loading"><div class="spinner"></div><p>Generating summary...</p></div>';
+
+    try {
+        const resp = await fetch(`/api/sessions/${viewingSessionId}/export/summary`, {
+            method: 'POST',
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+            content.innerHTML = `<p class="test-result error">${escapeHtml(data.error)}</p>`;
+        } else {
+            content.innerHTML = renderMarkdown(data.summary);
+        }
+    } catch (e) {
+        content.innerHTML = '<p class="test-result error">Failed to generate summary</p>';
+    }
+}
+
+async function exportLessons() {
+    if (!viewingSessionId || !aiConfigured) return;
+
+    const modal = document.getElementById('summary-modal');
+    const content = document.getElementById('summary-content');
+    document.querySelector('#summary-modal .modal-header h2').textContent = 'Lesson Notes';
+    modal.style.display = 'flex';
+    content.innerHTML = '<div class="summary-loading"><div class="spinner"></div><p>Generating lesson notes...</p></div>';
+
+    try {
+        const resp = await fetch(`/api/sessions/${viewingSessionId}/export/lessons`, {
+            method: 'POST',
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+            content.innerHTML = `<p class="test-result error">${escapeHtml(data.error)}</p>`;
+        } else {
+            content.innerHTML = renderMarkdown(data.lessons);
+        }
+    } catch (e) {
+        content.innerHTML = '<p class="test-result error">Failed to generate lesson notes</p>';
+    }
+}
+
+function closeSummaryModal() {
+    document.getElementById('summary-modal').style.display = 'none';
+    document.querySelector('#summary-modal .modal-header h2').textContent = 'Meeting Summary';
+}
+
+function copySummary() {
+    const content = document.getElementById('summary-content');
+    navigator.clipboard.writeText(content.innerText);
+    showToast('Summary copied to clipboard');
+}
+
+function renderMarkdown(text) {
+    // Simple markdown rendering for summary output
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^- \[x\] (.+)$/gm, '<li style="list-style:none">&#9745; $1</li>')
+        .replace(/^- \[ \] (.+)$/gm, '<li style="list-style:none">&#9744; $1</li>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+        .replace(/<\/ul>\s*<ul>/g, '')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+}
+
 // Initialize
 restoreSectionStates();
 connectWebSocket();
 loadDevices();
 loadSessions();
+loadAiConfig();
+loadDiarizationStatus();
 setInterval(pollStatus, 3000);
 pollStatus();

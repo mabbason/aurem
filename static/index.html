@@ -16,6 +16,12 @@
                 <button id="btn-start" class="btn btn-start" onclick="startSession()">Start Recording</button>
                 <button id="btn-stop" class="btn btn-stop" onclick="stopSession()" disabled>Stop</button>
             </div>
+            <button class="btn-gear" onclick="openConfigModal()" title="AI Settings">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="10" cy="10" r="3"/>
+                    <path d="M10 1.5v2M10 16.5v2M18.5 10h-2M3.5 10h-2M16 4l-1.4 1.4M5.4 14.6L4 16M16 16l-1.4-1.4M5.4 5.4L4 4"/>
+                </svg>
+            </button>
         </header>
 
         <div class="main">
@@ -57,14 +63,100 @@
                 <button class="btn btn-sm" onclick="exportSession('json')">JSON</button>
                 <button class="btn btn-sm" onclick="exportSession('txt')">TXT</button>
                 <button class="btn btn-sm" onclick="exportSession('srt')">SRT</button>
+                <span class="export-divider">|</span>
+                <button class="btn btn-sm btn-ai" id="btn-summary" onclick="exportSummary()" disabled title="Configure AI to unlock">Summary</button>
+                <button class="btn btn-sm btn-ai" id="btn-lessons" onclick="exportLessons()" disabled title="Configure AI to unlock">Lessons</button>
             </div>
-            <div class="audio-status">
-                Audio: <span id="audio-status">Disconnected</span>
+            <div class="footer-status">
+                <span class="audio-status">Audio: <span id="audio-status">Disconnected</span></span>
+                <span class="diarization-status" id="diarization-status"></span>
             </div>
         </footer>
     </div>
 
     <div id="toast" class="toast"></div>
+
+    <!-- AI Config Modal -->
+    <div id="config-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeConfigModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>AI Configuration</h2>
+                <button class="btn-close" onclick="closeConfigModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Provider</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn" data-provider="ollama" onclick="selectProvider('ollama')">Local (Ollama)</button>
+                        <button class="toggle-btn" data-provider="api" onclick="selectProvider('api')">API Key</button>
+                    </div>
+                </div>
+
+                <!-- Ollama settings -->
+                <div id="ollama-settings" class="provider-settings" style="display:none">
+                    <div class="form-group">
+                        <label>Ollama URL</label>
+                        <input type="text" id="ollama-url" class="form-input" value="http://localhost:11434" placeholder="http://localhost:11434">
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <div class="model-row">
+                            <select id="ollama-model" class="form-input"></select>
+                            <button class="btn btn-sm" onclick="fetchOllamaModels()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API settings -->
+                <div id="api-settings" class="provider-settings" style="display:none">
+                    <div class="form-group">
+                        <label>API Provider</label>
+                        <select id="api-provider" class="form-input" onchange="updateApiModels()">
+                            <option value="anthropic">Anthropic (Claude)</option>
+                            <option value="openai">OpenAI</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="api-key" class="form-input" placeholder="Enter API key...">
+                        <span id="api-key-preview" class="form-hint"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <select id="api-model" class="form-input"></select>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-sm" id="btn-test" onclick="testConnection()">Test Connection</button>
+                    <span id="test-result" class="test-result"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm" onclick="closeConfigModal()">Cancel</button>
+                <button class="btn btn-start btn-save" onclick="saveConfig()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Modal -->
+    <div id="summary-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeSummaryModal()">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h2>Meeting Summary</h2>
+                <button class="btn-close" onclick="closeSummaryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="summary-content" class="summary-content">
+                    <p class="placeholder">Generating summary...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm" onclick="copySummary()">Copy to Clipboard</button>
+                <button class="btn btn-sm" onclick="closeSummaryModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/static/app.js"></script>
 </body>

@@ -30,3 +30,6 @@ SESSIONS_DIR = Path(os.getenv("SESSIONS_DIR", str(BASE_DIR / "sessions")))
 
 # HuggingFace token for pyannote speaker diarization
 HF_TOKEN = os.getenv("HF_TOKEN", "")
+
+# AI config file (user-configurable via UI)
+AI_CONFIG_PATH = BASE_DIR / "ai_config.json"
