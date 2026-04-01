@@ -39,20 +39,24 @@ class Diarizer:
                 token=config.HF_TOKEN,
             )
 
-            print("Loading pyannote speaker embedding model...")
-            self.embedding_model = Inference(
-                "pyannote/embedding",
-                window="whole",
-            )
-
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.pipeline.to(device)
-            # Inference handles device internally via its model
+
             try:
-                self.embedding_model.to(device)
-            except (AttributeError, TypeError):
-                pass  # Some pyannote versions don't support .to() on Inference
-            print(f"Diarization pipeline loaded ({device})")
+                print("Loading pyannote speaker embedding model...")
+                self.embedding_model = Inference(
+                    "pyannote/embedding",
+                    window="whole",
+                )
+                try:
+                    self.embedding_model.to(device)
+                except (AttributeError, TypeError):
+                    pass
+                print(f"Diarization pipeline loaded with embeddings ({device})")
+            except Exception as e:
+                print(f"  Embedding model failed ({e}), cross-chunk speaker matching disabled")
+                self.embedding_model = None
+                print(f"Diarization pipeline loaded without embeddings ({device})")
 
             DIARIZATION_AVAILABLE = True
         except Exception as e:
