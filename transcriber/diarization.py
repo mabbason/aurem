@@ -99,10 +99,8 @@ class Diarizer:
                 })
 
             # Use embeddings from pyannote 4.0 result if available
-            if result_embeddings is not None:
-                chunk_speaker_embeddings = {
-                    label: emb for label, emb in result_embeddings.items()
-                }
+            if result_embeddings is not None and isinstance(result_embeddings, dict):
+                chunk_speaker_embeddings = dict(result_embeddings)
             elif self.embedding_model:
                 # Fall back to separate embedding model for pyannote 3.x
                 for turn_info in speaker_timeline:
