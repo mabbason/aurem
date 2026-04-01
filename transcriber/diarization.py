@@ -77,7 +77,15 @@ class Diarizer:
         try:
             waveform = torch.tensor(audio, dtype=torch.float32).unsqueeze(0)
             input_data = {"waveform": waveform, "sample_rate": config.AUDIO_SAMPLE_RATE}
-            diarization = self.pipeline(input_data)
+            result = self.pipeline(input_data)
+
+            # pyannote 4.0 returns DiarizeOutput dataclass; extract the Annotation
+            if hasattr(result, 'speaker_diarization'):
+                diarization = result.speaker_diarization
+                result_embeddings = getattr(result, 'speaker_embeddings', None)
+            else:
+                diarization = result  # pyannote 3.x returns Annotation directly
+                result_embeddings = None
 
             # Build timeline of speaker segments with embeddings
             speaker_timeline = []
@@ -90,22 +98,28 @@ class Diarizer:
                     "label": speaker_label,
                 })
 
-                # Extract embedding for this speaker's audio segment
-                if speaker_label not in chunk_speaker_embeddings and self.embedding_model:
-                    try:
-                        start_sample = int(turn.start * config.AUDIO_SAMPLE_RATE)
-                        end_sample = int(turn.end * config.AUDIO_SAMPLE_RATE)
-                        segment_audio = audio[start_sample:end_sample]
-
-                        # Need at least 0.5s of audio for a useful embedding
-                        if len(segment_audio) >= config.AUDIO_SAMPLE_RATE * 0.5:
-                            seg_waveform = torch.tensor(segment_audio, dtype=torch.float32).unsqueeze(0)
-                            embedding = self.embedding_model(
-                                {"waveform": seg_waveform, "sample_rate": config.AUDIO_SAMPLE_RATE}
-                            )
-                            chunk_speaker_embeddings[speaker_label] = embedding
-                    except Exception:
-                        pass
+            # Use embeddings from pyannote 4.0 result if available
+            if result_embeddings is not None:
+                chunk_speaker_embeddings = {
+                    label: emb for label, emb in result_embeddings.items()
+                }
+            elif self.embedding_model:
+                # Fall back to separate embedding model for pyannote 3.x
+                for turn_info in speaker_timeline:
+                    label = turn_info["label"]
+                    if label not in chunk_speaker_embeddings:
+                        try:
+                            start_sample = int(turn_info["start"] * config.AUDIO_SAMPLE_RATE)
+                            end_sample = int(turn_info["end"] * config.AUDIO_SAMPLE_RATE)
+                            segment_audio = audio[start_sample:end_sample]
+                            if len(segment_audio) >= config.AUDIO_SAMPLE_RATE * 0.5:
+                                seg_waveform = torch.tensor(segment_audio, dtype=torch.float32).unsqueeze(0)
+                                embedding = self.embedding_model(
+                                    {"waveform": seg_waveform, "sample_rate": config.AUDIO_SAMPLE_RATE}
+                                )
+                                chunk_speaker_embeddings[label] = embedding
+                        except Exception:
+                            pass
 
             # Map chunk-local pyannote labels to session-consistent Speaker N labels
             chunk_label_map = {}
