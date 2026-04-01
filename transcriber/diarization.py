@@ -36,13 +36,13 @@ class Diarizer:
             print("Loading pyannote diarization pipeline...")
             self.pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
-                use_auth_token=config.HF_TOKEN,
+                token=config.HF_TOKEN,
             )
 
             print("Loading pyannote speaker embedding model...")
             self.embedding_model = Inference(
                 "pyannote/embedding",
-                use_auth_token=config.HF_TOKEN,
+                token=config.HF_TOKEN,
                 window="whole",
             )
 
