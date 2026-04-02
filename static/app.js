@@ -728,6 +728,154 @@ function renderMarkdown(text) {
         .replace(/\n/g, '<br>');
 }
 
+// --- Tab switching ---
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.tab-content').forEach(c => {
+        c.style.display = c.id === `tab-${tab}` ? '' : 'none';
+        c.classList.toggle('active', c.id === `tab-${tab}`);
+    });
+}
+
+// --- File Transcription ---
+
+let selectedFile = null;
+let currentFileJobId = null;
+let filePollingInterval = null;
+
+function onFileSelected(input) {
+    if (input.files.length > 0) {
+        selectedFile = input.files[0];
+        document.getElementById('file-drop-text').textContent = selectedFile.name;
+        document.getElementById('file-drop-zone').classList.add('has-file');
+        document.getElementById('btn-transcribe').disabled = false;
+    }
+}
+
+// Drag and drop
+document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('file-drop-zone');
+    if (!zone) return;
+
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            document.getElementById('file-input').files = e.dataTransfer.files;
+            onFileSelected(document.getElementById('file-input'));
+        }
+    });
+});
+
+async function startFileTranscription() {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    const numSpeakers = document.getElementById('file-num-speakers').value;
+    if (numSpeakers) formData.append('num_speakers', numSpeakers);
+
+    const labelSpeakers = document.getElementById('file-label-speakers').checked;
+    formData.append('label_speakers', labelSpeakers);
+
+    document.getElementById('btn-transcribe').disabled = true;
+    document.getElementById('file-progress').style.display = 'flex';
+    document.getElementById('file-progress-text').textContent = 'Uploading...';
+    document.getElementById('file-export-bar').style.display = 'none';
+    document.getElementById('file-speakers').style.display = 'none';
+    document.getElementById('file-transcript').innerHTML = '<p class="placeholder">Processing...</p>';
+
+    try {
+        const resp = await fetch('/api/transcribe-file', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (data.error) {
+            document.getElementById('file-progress-text').textContent = data.error;
+            document.getElementById('btn-transcribe').disabled = false;
+            return;
+        }
+
+        currentFileJobId = data.job_id;
+        filePollingInterval = setInterval(pollFileJob, 2000);
+    } catch (e) {
+        document.getElementById('file-progress-text').textContent = 'Upload failed';
+        document.getElementById('btn-transcribe').disabled = false;
+    }
+}
+
+async function pollFileJob() {
+    if (!currentFileJobId) return;
+
+    try {
+        const resp = await fetch(`/api/transcribe-file/${currentFileJobId}/status`);
+        const data = await resp.json();
+
+        document.getElementById('file-progress-text').textContent = data.progress;
+
+        if (data.status === 'completed') {
+            clearInterval(filePollingInterval);
+            filePollingInterval = null;
+            document.getElementById('file-progress').style.display = 'none';
+            document.getElementById('btn-transcribe').disabled = false;
+
+            // Show speaker summary
+            if (data.speakers && Object.keys(data.speakers).length > 0) {
+                const speakersEl = document.getElementById('file-speakers');
+                speakersEl.style.display = 'block';
+                speakersEl.innerHTML = '<h3>Speakers</h3>' +
+                    Object.values(data.speakers).map(s =>
+                        `<div class="speaker-stat"><span class="speaker-label">${escapeHtml(s.label)}</span><span class="speaker-time">${formatDuration(s.total_speaking_time)}</span></div>`
+                    ).join('');
+            }
+
+            loadFileResult();
+        } else if (data.status === 'failed') {
+            clearInterval(filePollingInterval);
+            filePollingInterval = null;
+            document.getElementById('file-progress-text').textContent = data.progress;
+            document.getElementById('btn-transcribe').disabled = false;
+        }
+    } catch (e) {
+        // keep polling
+    }
+}
+
+async function loadFileResult() {
+    if (!currentFileJobId) return;
+
+    const resp = await fetch(`/api/transcribe-file/${currentFileJobId}/result`);
+    const data = await resp.json();
+
+    const transcript = document.getElementById('file-transcript');
+    transcript.innerHTML = '';
+
+    for (const seg of data.segments) {
+        const div = document.createElement('div');
+        div.className = 'segment';
+        div.dataset.speaker = seg.speaker;
+        const ts = formatTimestamp(seg.start);
+        div.innerHTML = `
+            <div class="meta">
+                <span class="timestamp">[${ts}]</span>
+                <span class="speaker">${escapeHtml(seg.speaker)}</span>
+            </div>
+            <div class="text">${escapeHtml(seg.text)}</div>
+        `;
+        transcript.appendChild(div);
+    }
+
+    document.getElementById('file-export-bar').style.display = 'flex';
+}
+
+function downloadFileResult(format) {
+    if (!currentFileJobId) return;
+    window.open(`/api/transcribe-file/${currentFileJobId}/result?format=${format}`, '_blank');
+}
+
 // Initialize
 restoreSectionStates();
 connectWebSocket();
