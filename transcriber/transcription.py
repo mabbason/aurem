@@ -22,7 +22,7 @@ class Transcriber:
         )
         print("Whisper model loaded")
 
-    def transcribe(self, audio: np.ndarray, offset_seconds: float = 0.0) -> list[dict]:
+    def transcribe(self, audio: np.ndarray, offset_seconds: float = 0.0, language: str = "en") -> list[dict]:
         """
         Transcribe audio array and return segments with absolute timestamps.
 
@@ -38,7 +38,7 @@ class Transcriber:
 
         segments_iter, info = self.model.transcribe(
             audio,
-            language="en",
+            language=language,
             beam_size=5,
             word_timestamps=True,
             vad_filter=True,
