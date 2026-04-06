@@ -97,10 +97,17 @@ class TranscriptionPipeline:
         segment_count = len(self.session["segments"])
 
         if segment_count > 0:
-            self._run_post_session_diarization()
+            # Save transcript immediately so the session appears in the list
             self._save_transcript()
+            # Run diarization in background so the stop response returns fast
+            import threading
+            session_ref = self.session
+            threading.Thread(
+                target=self._post_session_diarization_background,
+                args=(session_ref,),
+                daemon=True,
+            ).start()
         else:
-            # Remove empty session directory
             import shutil
             session_dir = self.session["dir"]
             if session_dir.exists():
@@ -117,12 +124,28 @@ class TranscriptionPipeline:
         self.session = None
         return result
 
-    def _run_post_session_diarization(self):
+    def _post_session_diarization_background(self, session: dict):
+        """Run diarization in background and update the saved transcript."""
+        try:
+            self._run_post_session_diarization(session)
+            # Re-save transcript with speaker labels
+            transcript_path = session["dir"] / "transcript.json"
+            if transcript_path.exists():
+                data = json.loads(transcript_path.read_text())
+                data["segments"] = session["segments"]
+                transcript_path.write_text(json.dumps(data, indent=2))
+                print(f"Transcript updated with speaker labels: {session['id']}")
+        except Exception as e:
+            print(f"Background diarization failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _run_post_session_diarization(self, session: dict):
         """Run diarization on the full session audio after recording stops."""
         if self.diarizer.pipeline is None:
             return
 
-        segments = self.session["segments"]
+        segments = session["segments"]
         if not segments:
             return
 
@@ -131,7 +154,7 @@ class TranscriptionPipeline:
             import torch
 
             # Load and concatenate all audio chunks
-            chunk_files = sorted(glob.glob(str(self.session["dir"] / "chunk_*.wav")))
+            chunk_files = sorted(glob.glob(str(session["dir"] / "chunk_*.wav")))
             if not chunk_files:
                 return
 

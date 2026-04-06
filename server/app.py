@@ -267,8 +267,9 @@ def _process_file_job(job_id: str, filepath: str, filename: str,
         segments = transcriber.transcribe(audio, offset_seconds=0.0, language=language)
         for seg in segments:
             seg["speaker"] = "Speaker"
-        job["progress"] = f"Transcription complete ({len(segments)} segments)"
+        job["progress"] = f"Transcription complete: {len(segments)} segments"
 
+        # Diarization
         diarization_info = {"num_speakers": 0, "speakers": {}}
         if diarizer.pipeline is not None:
             job["progress"] = "Running speaker diarization..."
@@ -279,12 +280,13 @@ def _process_file_job(job_id: str, filepath: str, filename: str,
                     label_speakers=label_speakers,
                 )
                 n = diarization_info["num_speakers"]
-                job["progress"] = f"Diarization complete ({n} speakers)"
+                job["progress"] = f"Diarization complete: {n} speaker(s)"
             except Exception as e:
-                job["progress"] = f"Diarization failed ({e}), transcript only"
+                job["progress"] = f"Diarization failed ({e}), continuing without it"
 
-        job["progress"] = "Merging segments..."
         segments = merge_adjacent_segments(segments)
+        for seg in segments:
+            seg.pop("words", None)
 
         job["result"] = {
             "source_file": filename,
@@ -294,7 +296,6 @@ def _process_file_job(job_id: str, filepath: str, filename: str,
             "speakers": diarization_info.get("speakers", {}),
             "segments": segments,
         }
-        job["num_speakers"] = diarization_info.get("num_speakers", 0)
         job["speakers"] = diarization_info.get("speakers", {})
         job["status"] = "completed"
         job["progress"] = "Done"
@@ -303,8 +304,10 @@ def _process_file_job(job_id: str, filepath: str, filename: str,
         job["status"] = "failed"
         job["progress"] = f"Error: {e}"
     finally:
-        if os.path.exists(filepath):
+        try:
             os.unlink(filepath)
+        except OSError as cleanup_err:
+            print(f"Warning: could not delete temp file {filepath}: {cleanup_err}")
 
 
 @app.post("/api/transcribe-file")
@@ -316,21 +319,20 @@ async def transcribe_file_upload(
 ):
     import tempfile
 
-    job_id = str(uuid.uuid4())[:8]
-    suffix = Path(file.filename or "upload").suffix or ".wav"
+    job_id = str(uuid.uuid4())
+    suffix = Path(file.filename or "audio.mp3").suffix
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir=str(config.BASE_DIR)) as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
 
     file_jobs[job_id] = {
         "job_id": job_id,
-        "filename": file.filename,
         "status": "processing",
         "progress": "Queued",
+        "filename": file.filename,
         "duration": None,
-        "num_speakers": None,
         "speakers": {},
         "result": None,
     }
@@ -342,71 +344,190 @@ async def transcribe_file_upload(
     )
     thread.start()
 
-    return JSONResponse({
+    return JSONResponse({"job_id": job_id, "status": "processing", "filename": file.filename})
+
+
+@app.post("/api/transcribe-file-path")
+async def transcribe_file_by_path(request: Request):
+    """Start transcription from a local file path (no upload needed)."""
+    body = await request.json()
+    filepath = body.get("filepath")
+    num_speakers = body.get("num_speakers")
+    label_speakers = body.get("label_speakers", True)
+    language = body.get("language", "en")
+
+    if not filepath or not os.path.isfile(filepath):
+        return JSONResponse({"error": f"File not found: {filepath}"}, status_code=400)
+
+    job_id = str(uuid.uuid4())
+    filename = os.path.basename(filepath)
+
+    file_jobs[job_id] = {
         "job_id": job_id,
         "status": "processing",
-        "filename": file.filename,
-    })
+        "progress": "Queued",
+        "filename": filename,
+        "duration": None,
+        "speakers": {},
+        "result": None,
+    }
+
+    def _process_path_job():
+        job = file_jobs[job_id]
+        try:
+            job["progress"] = "Loading audio..."
+            audio = load_audio(filepath)
+            duration = len(audio) / config.AUDIO_SAMPLE_RATE
+            job["duration"] = round(duration, 1)
+            job["progress"] = f"Audio loaded ({format_duration(duration)})"
+
+            transcriber, diarizer = _get_file_models()
+
+            job["progress"] = "Transcribing..."
+            segments = transcriber.transcribe(audio, offset_seconds=0.0, language=language)
+            for seg in segments:
+                seg["speaker"] = "Speaker"
+            job["progress"] = f"Transcription complete: {len(segments)} segments"
+
+            diarization_info = {"num_speakers": 0, "speakers": {}}
+            if diarizer.pipeline is not None:
+                job["progress"] = "Running speaker diarization..."
+                try:
+                    diarization_info = run_diarization(
+                        diarizer, audio, segments,
+                        num_speakers=num_speakers,
+                        label_speakers=label_speakers,
+                    )
+                    n = diarization_info["num_speakers"]
+                    job["progress"] = f"Diarization complete: {n} speaker(s)"
+                except Exception as e:
+                    job["progress"] = f"Diarization failed ({e}), continuing without it"
+
+            segments = merge_adjacent_segments(segments)
+            for seg in segments:
+                seg.pop("words", None)
+
+            job["result"] = {
+                "source_file": filename,
+                "duration": round(duration, 1),
+                "language": language,
+                "num_speakers": diarization_info.get("num_speakers", 0),
+                "speakers": diarization_info.get("speakers", {}),
+                "segments": segments,
+            }
+            job["speakers"] = diarization_info.get("speakers", {})
+            job["status"] = "completed"
+            job["progress"] = "Done"
+        except Exception as e:
+            job["status"] = "failed"
+            job["progress"] = f"Error: {e}"
+
+    thread = threading.Thread(target=_process_path_job, daemon=True)
+    thread.start()
+
+    return JSONResponse({"job_id": job_id, "status": "processing", "filename": filename})
 
 
 @app.get("/api/transcribe-file/{job_id}/status")
 async def transcribe_file_status(job_id: str):
     job = file_jobs.get(job_id)
-    if not job:
+    if job is None:
         return JSONResponse({"error": "Job not found"}, status_code=404)
 
     resp = {
-        "job_id": job["job_id"],
+        "job_id": job_id,
         "status": job["status"],
         "progress": job["progress"],
-        "filename": job["filename"],
     }
     if job["status"] == "completed":
-        resp["duration"] = job["duration"]
-        resp["num_speakers"] = job["num_speakers"]
-        resp["speakers"] = job["speakers"]
+        resp["duration"] = job.get("duration")
+        resp["num_speakers"] = job["result"]["num_speakers"] if job["result"] else 0
+        resp["speakers"] = job.get("speakers", {})
     return JSONResponse(resp)
 
 
 @app.get("/api/transcribe-file/{job_id}/result")
 async def transcribe_file_result(job_id: str, format: str = "json"):
     job = file_jobs.get(job_id)
-    if not job:
+    if job is None:
         return JSONResponse({"error": "Job not found"}, status_code=404)
-    if job["status"] != "completed":
+    if job["status"] != "completed" or job["result"] is None:
         return JSONResponse({"error": "Job not completed yet"}, status_code=400)
 
     result = job["result"]
-    segments = result["segments"]
-    filename = Path(job["filename"]).stem
 
     if format == "txt":
         lines = []
-        for seg in segments:
+        for seg in result["segments"]:
             ts = tf_format_timestamp(seg["start"])
             speaker = seg.get("speaker", "Speaker")
             lines.append(f"[{ts}] {speaker}: {seg['text']}")
         return PlainTextResponse(
             "\n".join(lines),
-            headers={"Content-Disposition": f"attachment; filename={filename}_transcript.txt"},
+            headers={"Content-Disposition": f"attachment; filename={job_id}.txt"},
         )
 
     elif format == "srt":
         srt_lines = []
-        for i, seg in enumerate(segments, 1):
+        for i, seg in enumerate(result["segments"], 1):
             start = tf_format_srt_time(seg["start"])
             end = tf_format_srt_time(seg["end"])
             speaker = seg.get("speaker", "Speaker")
-            srt_lines.append(str(i))
+            srt_lines.append(f"{i}")
             srt_lines.append(f"{start} --> {end}")
             srt_lines.append(f"{speaker}: {seg['text']}")
             srt_lines.append("")
         return PlainTextResponse(
             "\n".join(srt_lines),
-            headers={"Content-Disposition": f"attachment; filename={filename}_transcript.srt"},
+            headers={"Content-Disposition": f"attachment; filename={job_id}.srt"},
         )
 
     return JSONResponse(result)
+
+
+@app.post("/api/transcribe-file/{job_id}/save")
+async def transcribe_file_save(job_id: str, request: Request):
+    """Save transcription results (JSON + TXT + SRT) to a directory on disk."""
+    job = file_jobs.get(job_id)
+    if job is None:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    if job["status"] != "completed" or job["result"] is None:
+        return JSONResponse({"error": "Job not completed yet"}, status_code=400)
+
+    body = await request.json()
+    output_dir = body.get("output_dir")
+    basename = body.get("basename", job_id)
+
+    if not output_dir:
+        return JSONResponse({"error": "output_dir is required"}, status_code=400)
+
+    os.makedirs(output_dir, exist_ok=True)
+    result = job["result"]
+    saved = []
+
+    json_path = os.path.join(output_dir, f"{basename}_transcript.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+    saved.append(json_path)
+
+    txt_path = os.path.join(output_dir, f"{basename}_transcript.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        for seg in result["segments"]:
+            ts = tf_format_timestamp(seg["start"])
+            speaker = seg.get("speaker", "Speaker")
+            f.write(f"[{ts}] {speaker}: {seg['text']}\n")
+    saved.append(txt_path)
+
+    srt_path = os.path.join(output_dir, f"{basename}_transcript.srt")
+    with open(srt_path, "w", encoding="utf-8") as f:
+        for i, seg in enumerate(result["segments"], 1):
+            start = tf_format_srt_time(seg["start"])
+            end = tf_format_srt_time(seg["end"])
+            speaker = seg.get("speaker", "Speaker")
+            f.write(f"{i}\n{start} --> {end}\n{speaker}: {seg['text']}\n\n")
+    saved.append(srt_path)
+
+    return JSONResponse({"saved": saved, "output_dir": output_dir})
 
 
 @app.websocket("/ws")
