@@ -1,5 +1,5 @@
 """
-Meeting Transcriber — Entry point.
+Aurem — Entry point.
 Runs entirely on Windows: audio capture + transcription + web UI in one process.
 """
 
@@ -11,7 +11,7 @@ from server.app import app, pipeline
 
 async def main():
     print("=" * 50)
-    print("  Meeting Transcriber")
+    print("  Aurem")
     print("=" * 50)
     print()
 

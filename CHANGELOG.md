@@ -1,6 +1,18 @@
 # Changelog
 
-All notable changes to the Meeting Transcriber will be documented in this file.
+All notable changes to Aurem will be documented in this file.
+
+## [0.1.0.0] - 2026-04-09
+
+### Rebrand: Meeting Transcriber → Aurem
+- Applied full brand identity: Aurem (Latin for "ear")
+- Tagline: Listen. Learn. Prepare.
+- Repositioned as local-first relationship intelligence tool
+- Updated brand colors (yellow, green, blue, purple, orange, hotpink)
+- Added Montserrat (display) and Inter (body) typography
+- PWA manifest with standalone display
+- OG and Twitter card meta tags
+- Speaker color mapping: speaker1=yellow, speaker2=green, speaker3=blue, speaker4=purple, speaker5=orange, speaker6=hotpink
 
 ## [0.1.0.0] - 2026-04-06
 

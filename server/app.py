@@ -25,7 +25,7 @@ from transcribe_file import (
     format_srt_time as tf_format_srt_time,
 )
 
-app = FastAPI(title="Meeting Transcriber")
+app = FastAPI(title="Aurem")
 pipeline = TranscriptionPipeline()
 
 # --- File transcription job tracking ---

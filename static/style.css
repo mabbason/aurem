@@ -1,26 +1,47 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-    --bg: #1a1a2e;
-    --surface: #16213e;
-    --surface2: #0f3460;
-    --accent: #e94560;
-    --accent-green: #00d977;
-    --text: #eee;
-    --text-dim: #999;
-    --speaker1: #5dade2;
-    --speaker2: #f5b041;
-    --speaker3: #82e0aa;
-    --speaker4: #d7bde2;
-    --speaker5: #f1948a;
+  /* Neutrals */
+  --bg: #282828;
+  --near-black: #111111;
+  --text: #F5F5F4;
+  --white: #FFFFFF;
+  --text-dim: rgba(245, 245, 244, 0.6);
+  --surface: #1f1f1f;
+  --surface2: #353535;
+
+  /* Brand colors */
+  --yellow: #EDD835;  --yellow-shadow: #8A7000;
+  --green: #2D9F4A;   --green-shadow: #166010;
+  --blue: #3894C7;    --blue-shadow: #186AA7;
+  --purple: #65207E;  --purple-shadow: #380868;
+  --orange: #EF9414;  --orange-shadow: #804000;
+  --hotpink: #DC386F; --hotpink-shadow: #B91059;
+
+  /* Semantic */
+  --accent: var(--hotpink);
+  --accent-green: var(--green);
+
+  /* Speaker colors (map to brand order) */
+  --speaker1: var(--yellow);
+  --speaker2: var(--green);
+  --speaker3: var(--blue);
+  --speaker4: var(--purple);
+  --speaker5: var(--orange);
+  --speaker6: var(--hotpink);
 }
 
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
     height: 100vh;
     overflow: hidden;
+}
+
+h1, h2, .display {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 700;
 }
 
 .app {
@@ -321,6 +342,8 @@ header h1 { font-size: 18px; font-weight: 600; }
 .segment[data-speaker="Speaker 4"] .speaker { color: var(--speaker4); }
 .segment[data-speaker="Speaker 5"] { border-left-color: var(--speaker5); }
 .segment[data-speaker="Speaker 5"] .speaker { color: var(--speaker5); }
+.segment[data-speaker="Speaker 6"] { border-left-color: var(--speaker6); }
+.segment[data-speaker="Speaker 6"] .speaker { color: var(--speaker6); }
 
 .empty { color: var(--text-dim); font-size: 13px; padding: 16px; }
 
@@ -682,3 +705,36 @@ footer {
 }
 .speaker-label { color: var(--text); }
 .speaker-time { color: var(--text-dim); }
+
+/* Brand section */
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.brand-mark {
+    width: 48px;
+    height: 48px;
+    display: block;
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.wordmark {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.tagline {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-dim);
+}

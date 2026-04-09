@@ -1,0 +1,89 @@
+{
+  "brand": "Aurem",
+  "tagline": "Listen. Learn. Prepare.",
+  "version": "1.0.0",
+  "generated": "2026-04-08",
+
+  "colors": {
+    "brand": {
+      "yellow":   { "face": "#EDD835", "shadow": "#8A7000", "rgb_face": "rgb(237,220,53)",  "rgb_shadow": "rgb(139,112,0)"   },
+      "green":    { "face": "#2D9F4A", "shadow": "#166010", "rgb_face": "rgb(45,159,74)",   "rgb_shadow": "rgb(22,96,16)"    },
+      "blue":     { "face": "#3894C7", "shadow": "#186AA7", "rgb_face": "rgb(56,148,199)",  "rgb_shadow": "rgb(24,106,167)"  },
+      "purple":   { "face": "#65207E", "shadow": "#380868", "rgb_face": "rgb(101,32,126)",  "rgb_shadow": "rgb(56,8,104)"    },
+      "orange":   { "face": "#EF9414", "shadow": "#804000", "rgb_face": "rgb(239,148,20)",  "rgb_shadow": "rgb(128,64,0)"    },
+      "hotpink":  { "face": "#DC386F", "shadow": "#B91059", "rgb_face": "rgb(220,56,111)",  "rgb_shadow": "rgb(185,16,89)"   }
+    },
+    "neutral": {
+      "dark-bg":    "#282828",
+      "near-black": "#111111",
+      "off-white":  "#F5F5F4",
+      "white":      "#FFFFFF"
+    }
+  },
+
+  "typography": {
+    "display": {
+      "family": "Montserrat",
+      "weights": [400, 600, 700],
+      "usage": "Headlines, marketing copy"
+    },
+    "wordmark": {
+      "family": "Montserrat",
+      "weight": 700,
+      "text": "Aurem",
+      "letter_spacing": "normal",
+      "usage": "Logo wordmark only"
+    },
+    "body": {
+      "family": "Inter, system-ui, sans-serif",
+      "weights": [400, 500, 600],
+      "usage": "Body text, UI"
+    }
+  },
+
+  "logo_mark": {
+    "description": "Six-segment ribbon waveform. Ribbon follows an organic path with two full helical loops. Each segment is flat solid color with 3D ribbon illusion via face/shadow split.",
+    "segments": 6,
+    "colors_order": ["yellow", "green", "blue", "purple", "orange", "hotpink"],
+    "source_svg": "logos/aurem-logo-dark.svg"
+  },
+
+  "assets": {
+    "logos": {
+      "dark": {
+        "svg": "logos/aurem-logo-dark.svg",
+        "png": "logos/aurem-logo-dark.png",
+        "usage": "Primary logo - dark/colored backgrounds"
+      },
+      "light": {
+        "svg": "logos/aurem-logo-light.svg",
+        "png": "logos/aurem-logo-light.png",
+        "usage": "Primary logo - white/light backgrounds"
+      },
+      "mark_dark": {
+        "svg": "logos/aurem-mark-dark.svg",
+        "png": "logos/aurem-mark-dark.png",
+        "usage": "Mark only (no wordmark) - dark backgrounds"
+      },
+      "mark_light": {
+        "svg": "logos/aurem-mark-light.svg",
+        "png": "logos/aurem-mark-light.png",
+        "usage": "Mark only (no wordmark) - light backgrounds"
+      }
+    },
+    "icons": {
+      "favicon":  "icons/favicon.ico",
+      "icon_16":  "icons/icon-16.png",
+      "icon_32":  "icons/icon-32.png",
+      "icon_48":  "icons/icon-48.png",
+      "icon_96":  "icons/icon-96.png",
+      "icon_180": "icons/icon-180.png",
+      "icon_192": "icons/icon-192.png",
+      "icon_512": "icons/icon-512.png"
+    },
+    "marketing": {
+      "og_image":     { "path": "marketing/og-image.png",     "size": "1200x630" },
+      "twitter_card": { "path": "marketing/twitter-card.png", "size": "1200x600" }
+    }
+  }
+}

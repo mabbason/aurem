@@ -9,7 +9,7 @@ a route (like the /ws deletion that broke live transcription) will fail here.
 def test_index_serves_html(client):
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "Meeting Transcriber" in resp.text
+    assert "Aurem" in resp.text
 
 
 def test_static_css(client):

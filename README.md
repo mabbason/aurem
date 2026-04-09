@@ -1,6 +1,8 @@
-# Meeting Transcriber
+# Aurem
 
-Real-time meeting transcription with speaker diarization. Captures system audio on Windows 11, transcribes locally using Whisper, and displays results in a web UI.
+**Listen. Learn. Prepare.**
+
+Aurem (Latin for *ear*) is a local-first relationship intelligence tool for Windows 11. It captures meeting audio, transcribes locally with Whisper on GPU, diarizes speakers, and extracts per-person facts into a local person graph. Before your next call, open a person's page and see everything you've ever discussed with them. Meetings are inputs. People are the product. All audio and ML stays on-device.
 
 ## Features
 

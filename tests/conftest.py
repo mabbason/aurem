@@ -1,5 +1,5 @@
 """
-Test fixtures for Meeting Transcriber.
+Test fixtures for Aurem.
 
 Mocks heavy dependencies (PyAudioWPatch, faster-whisper, pyannote) so tests
 run in WSL without GPU or Windows audio drivers.
