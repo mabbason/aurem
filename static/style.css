@@ -738,3 +738,253 @@ footer {
     font-weight: 400;
     color: var(--text-dim);
 }
+
+/* Speaker mapping panel on session detail */
+.speaker-mapping {
+    max-width: 800px;
+    margin: 0 auto 16px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--surface2);
+    border-radius: 6px;
+}
+.speaker-mapping-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.speaker-mapping-header h3 {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+.extraction-status {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.extraction-status.ok { color: var(--accent-green); }
+.extraction-status.error { color: var(--accent); }
+.extraction-status.pending { color: var(--orange); }
+.speaker-mapping-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.speaker-mapping-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg);
+    border-radius: 4px;
+}
+.speaker-mapping-row .label {
+    font-weight: 600;
+    min-width: 80px;
+    font-size: 13px;
+}
+.speaker-mapping-row[data-speaker="Speaker 1"] .label { color: var(--speaker1); }
+.speaker-mapping-row[data-speaker="Speaker 2"] .label { color: var(--speaker2); }
+.speaker-mapping-row[data-speaker="Speaker 3"] .label { color: var(--speaker3); }
+.speaker-mapping-row[data-speaker="Speaker 4"] .label { color: var(--speaker4); }
+.speaker-mapping-row[data-speaker="Speaker 5"] .label { color: var(--speaker5); }
+.speaker-mapping-row[data-speaker="Speaker 6"] .label { color: var(--speaker6); }
+.speaker-mapping-row select {
+    flex: 1;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--surface2);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+.speaker-mapping-row .fact-count {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* People tab */
+.people-layout { display: flex; flex: 1; overflow: hidden; }
+.people-sidebar {
+    width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--surface2);
+    overflow-y: auto;
+}
+.people-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--surface2);
+}
+.people-sidebar-header h2 { margin-bottom: 0; }
+.people-list { padding: 4px 0; }
+.person-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+.person-item:hover { background: var(--surface2); }
+.person-item.active {
+    background: var(--surface2);
+    border-left-color: var(--accent-green);
+}
+.person-name { font-weight: 600; font-size: 14px; }
+.person-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    display: flex;
+    gap: 8px;
+}
+
+.person-detail-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px;
+}
+.person-detail { max-width: 800px; margin: 0 auto; }
+.person-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--surface2);
+}
+.person-detail-header h1 {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+}
+.person-actions { display: flex; gap: 8px; }
+.person-notes {
+    margin-bottom: 24px;
+}
+.person-notes label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+.person-notes textarea {
+    width: 100%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--surface2);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 60px;
+}
+.person-notes textarea:focus {
+    outline: none;
+    border-color: var(--accent-green);
+}
+
+.fact-category {
+    margin-bottom: 20px;
+}
+.fact-category-header {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.fact-category[data-category="personal"] .fact-category-header { color: var(--speaker1); }
+.fact-category[data-category="professional"] .fact-category-header { color: var(--speaker3); }
+.fact-category[data-category="opinion"] .fact-category-header { color: var(--speaker4); }
+.fact-category[data-category="commitment"] .fact-category-header { color: var(--speaker6); }
+.fact-category[data-category="preference"] .fact-category-header { color: var(--speaker5); }
+.fact-category[data-category="context"] .fact-category-header { color: var(--speaker2); }
+
+.fact-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.fact-item .fact-text { flex: 1; }
+.fact-item .fact-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+.fact-item .fact-source-manual {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+.btn-delete-fact {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.fact-item:hover .btn-delete-fact { opacity: 0.6; }
+.btn-delete-fact:hover { color: var(--accent); opacity: 1 !important; }
+
+.meetings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.meeting-item {
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.meeting-item:hover { background: var(--surface2); }
+.meeting-item .meeting-title { font-weight: 500; }
+.meeting-item .meeting-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.detail-section {
+    margin-bottom: 24px;
+}
+.detail-section h2 {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.person-detail .empty-state {
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 24px;
+}
+
+@media (max-width: 700px) {
+    .speaker-mapping-list { grid-template-columns: 1fr; }
+    .people-sidebar { width: 200px; }
+}

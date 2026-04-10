@@ -19,6 +19,7 @@ from server.ai_config import load_ai_config, save_ai_config, test_ai_connection,
 from transcriber.pipeline import TranscriptionPipeline
 from transcriber.transcription import Transcriber
 from transcriber.diarization import Diarizer
+from transcriber import db as person_db
 from transcribe_file import (
     load_audio, run_diarization, merge_adjacent_segments,
     format_duration, format_timestamp as tf_format_timestamp,
@@ -27,6 +28,12 @@ from transcribe_file import (
 
 app = FastAPI(title="Aurem")
 pipeline = TranscriptionPipeline()
+
+# Initialize the relationship-intelligence DB (idempotent).
+try:
+    person_db.init_db()
+except Exception as e:
+    print(f"Warning: could not initialize person DB: {e}")
 
 # --- File transcription job tracking ---
 file_jobs: dict[str, dict] = {}
@@ -226,6 +233,181 @@ async def export_lessons(session_id: str):
     if "error" in result:
         return JSONResponse(result, status_code=500)
     return JSONResponse(result)
+
+
+# --- Relationship intelligence: session speakers ---
+
+@app.get("/api/sessions/{session_id}/speakers")
+async def get_session_speakers(session_id: str):
+    """Return unique speaker labels in a session alongside current mappings
+    and the facts extracted per label."""
+    data = pipeline.get_session_transcript(session_id)
+    if data is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    labels: list[str] = []
+    seen: set[str] = set()
+    for seg in data.get("segments", []):
+        label = seg.get("speaker", "Speaker")
+        if label not in seen:
+            seen.add(label)
+            labels.append(label)
+
+    mappings = person_db.get_session_speaker_mappings(session_id)
+    facts_by_label: dict[str, int] = {}
+    for f in person_db.facts_for_session(session_id):
+        lbl = f.get("speaker_label") or "?"
+        facts_by_label[lbl] = facts_by_label.get(lbl, 0) + 1
+
+    extraction = person_db.get_extraction_status(session_id)
+
+    return JSONResponse({
+        "session_id": session_id,
+        "speakers": [
+            {
+                "label": lbl,
+                "person_id": mappings.get(lbl),
+                "fact_count": facts_by_label.get(lbl, 0),
+            }
+            for lbl in labels
+        ],
+        "extraction": extraction,
+    })
+
+
+@app.post("/api/sessions/{session_id}/speakers")
+async def set_session_speakers(session_id: str, request: Request):
+    """Upsert speaker-to-person mappings. Body: {"mappings": {"Speaker 1": 3}}.
+    A null person_id clears the mapping for that label."""
+    body = await request.json()
+    mappings = body.get("mappings") or {}
+    if not isinstance(mappings, dict):
+        return JSONResponse({"error": "mappings must be an object"}, status_code=400)
+
+    for label, pid in mappings.items():
+        person_id: int | None
+        if pid is None or pid == "":
+            person_id = None
+        else:
+            try:
+                person_id = int(pid)
+            except (TypeError, ValueError):
+                return JSONResponse(
+                    {"error": f"Invalid person_id for {label}"}, status_code=400
+                )
+            if person_db.get_person(person_id) is None:
+                return JSONResponse(
+                    {"error": f"Person {person_id} not found"}, status_code=400
+                )
+        person_db.set_session_speaker_mapping(session_id, label, person_id)
+
+    return JSONResponse({"ok": True})
+
+
+# --- Relationship intelligence: people ---
+
+@app.get("/api/people")
+async def list_people_route():
+    return JSONResponse(person_db.list_people())
+
+
+@app.post("/api/people")
+async def create_person_route(request: Request):
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "name required"}, status_code=400)
+    notes = (body.get("notes") or "").strip() or None
+    pid = person_db.create_person(name, notes)
+    return JSONResponse(person_db.get_person(pid))
+
+
+@app.get("/api/people/{person_id}")
+async def get_person_route(person_id: int):
+    person = person_db.get_person(person_id)
+    if person is None:
+        return JSONResponse({"error": "Person not found"}, status_code=404)
+
+    all_facts = person_db.facts_for_person(person_id)
+
+    facts_by_category: dict[str, list[dict]] = {}
+    for f in all_facts:
+        cat = f.get("category", "context")
+        facts_by_category.setdefault(cat, []).append(f)
+
+    session_ids = sorted(
+        {f["session_id"] for f in all_facts if f.get("session_id")},
+        reverse=True,
+    )
+    meeting_history = []
+    for sid in session_ids:
+        session_data = pipeline.get_session_transcript(sid)
+        if session_data is None:
+            continue
+        meeting_history.append({
+            "session_id": sid,
+            "title": session_data.get("title", sid),
+            "started_at": session_data.get("started_at"),
+            "duration": session_data.get("duration", 0),
+        })
+
+    return JSONResponse({
+        "person": person,
+        "facts_by_category": facts_by_category,
+        "meeting_history": meeting_history,
+        "total_facts": len(all_facts),
+    })
+
+
+@app.patch("/api/people/{person_id}")
+async def update_person_route(person_id: int, request: Request):
+    body = await request.json()
+    if "notes" in body:
+        notes = body.get("notes") or ""
+        if not person_db.update_person_notes(person_id, notes):
+            return JSONResponse({"error": "Person not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/people/{person_id}")
+async def delete_person_route(person_id: int):
+    if not person_db.delete_person(person_id):
+        return JSONResponse({"error": "Person not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/people/{person_id}/facts")
+async def add_manual_fact(person_id: int, request: Request):
+    """Manual fact entry. No session_id, no segment timestamps."""
+    if person_db.get_person(person_id) is None:
+        return JSONResponse({"error": "Person not found"}, status_code=404)
+
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    category = body.get("category") or "context"
+    if not text:
+        return JSONResponse({"error": "text required"}, status_code=400)
+
+    from transcriber.extraction import VALID_CATEGORIES
+    if category not in VALID_CATEGORIES:
+        return JSONResponse({"error": f"Invalid category: {category}"}, status_code=400)
+
+    fact_id = person_db.insert_fact(
+        session_id=None,
+        speaker_label=None,
+        text=text,
+        category=category,
+        source="manual",
+        person_id=person_id,
+    )
+    return JSONResponse({"id": fact_id})
+
+
+@app.delete("/api/facts/{fact_id}")
+async def delete_fact_route(fact_id: int):
+    if not person_db.delete_fact(fact_id):
+        return JSONResponse({"error": "Fact not found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/diarization/status")

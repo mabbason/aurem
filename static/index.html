@@ -36,6 +36,7 @@
             <div class="tab-bar">
                 <button class="tab active" data-tab="record" onclick="switchTab('record')">Record</button>
                 <button class="tab" data-tab="file" onclick="switchTab('file')">Transcribe File</button>
+                <button class="tab" data-tab="people" onclick="switchTab('people'); loadPeople()">People</button>
             </div>
             <button class="btn-gear" onclick="openConfigModal()" title="AI Settings">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -80,6 +81,13 @@
                 </aside>
 
                 <section class="transcript-panel">
+                    <div id="speaker-mapping" class="speaker-mapping" style="display:none">
+                        <div class="speaker-mapping-header">
+                            <h3>Map Speakers</h3>
+                            <span id="extraction-status" class="extraction-status"></span>
+                        </div>
+                        <div id="speaker-mapping-list" class="speaker-mapping-list"></div>
+                    </div>
                     <div id="transcript" class="transcript">
                         <p class="placeholder">Start a recording or select a past session to view the transcript.</p>
                     </div>
@@ -162,6 +170,26 @@
         </div>
     </div>
 
+        <!-- People Tab -->
+        <div id="tab-people" class="tab-content" style="display:none">
+            <div class="people-layout">
+                <aside class="people-sidebar">
+                    <div class="people-sidebar-header">
+                        <h2 class="section-header-static">People</h2>
+                        <button class="btn btn-sm" onclick="openAddPersonModal()">+ Add</button>
+                    </div>
+                    <div id="people-list" class="people-list">
+                        <p class="empty">Loading...</p>
+                    </div>
+                </aside>
+                <section class="person-detail-panel">
+                    <div id="person-detail" class="person-detail">
+                        <p class="placeholder">Select a person to see their profile, or add someone new.</p>
+                    </div>
+                </section>
+            </div>
+        </div>
+
     <div id="toast" class="toast"></div>
 
     <!-- AI Config Modal -->
@@ -242,6 +270,61 @@
             <div class="modal-footer">
                 <button class="btn btn-sm" onclick="copySummary()">Copy to Clipboard</button>
                 <button class="btn btn-sm" onclick="closeSummaryModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Person Modal -->
+    <div id="add-person-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAddPersonModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Add Person</h2>
+                <button class="btn-close" onclick="closeAddPersonModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="new-person-name" class="form-input" placeholder="e.g., Sarah Chen">
+                </div>
+                <div class="form-group">
+                    <label>Notes (optional)</label>
+                    <textarea id="new-person-notes" class="form-input" rows="3" placeholder="Context, how you know them, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm" onclick="closeAddPersonModal()">Cancel</button>
+                <button class="btn btn-start btn-save" onclick="createPerson()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Fact Modal -->
+    <div id="add-fact-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAddFactModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Add Fact</h2>
+                <button class="btn-close" onclick="closeAddFactModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Fact</label>
+                    <textarea id="new-fact-text" class="form-input" rows="3" placeholder="One clear sentence..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="new-fact-category" class="form-input">
+                        <option value="personal">Personal</option>
+                        <option value="professional">Professional</option>
+                        <option value="opinion">Opinion</option>
+                        <option value="commitment">Commitment</option>
+                        <option value="preference">Preference</option>
+                        <option value="context" selected>Context</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm" onclick="closeAddFactModal()">Cancel</button>
+                <button class="btn btn-start btn-save" onclick="createFact()">Add</button>
             </div>
         </div>
     </div>

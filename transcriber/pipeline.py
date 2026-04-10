@@ -135,7 +135,8 @@ class TranscriptionPipeline:
         return result
 
     def _post_session_diarization_background(self, session: dict):
-        """Run diarization in background and update the saved transcript."""
+        """Run diarization then fact extraction in background, update the
+        saved transcript with speaker labels."""
         try:
             self._run_post_session_diarization(session)
             # Re-save transcript with speaker labels
@@ -149,6 +150,54 @@ class TranscriptionPipeline:
             print(f"Background diarization failed: {e}")
             import traceback
             traceback.print_exc()
+
+        # Fact extraction runs after diarization so facts can be attached
+        # to the final speaker labels.
+        try:
+            self._run_post_session_extraction(session)
+        except Exception as e:
+            print(f"Background extraction failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _run_post_session_extraction(self, session: dict):
+        """Extract facts from the session transcript and store them in SQLite.
+        Runs after diarization so speaker labels are final. Failures are
+        recorded in session_extractions but never block the session save."""
+        import asyncio
+        from server.ai_config import load_ai_config
+        from transcriber import db
+        from transcriber.extraction import extract_facts
+
+        session_id = session["id"]
+
+        cfg = load_ai_config()
+        if not cfg.get("provider"):
+            db.record_extraction(session_id, "skipped", "AI provider not configured")
+            print(f"Extraction skipped for {session_id}: no AI provider configured")
+            return
+
+        # Reload from disk (diarization may have rewritten the speaker labels)
+        transcript_path = session["dir"] / "transcript.json"
+        if not transcript_path.exists():
+            db.record_extraction(session_id, "skipped", "No transcript on disk")
+            return
+        data = json.loads(transcript_path.read_text())
+
+        if db.session_has_facts(session_id):
+            print(f"Extraction skipped for {session_id}: facts already present")
+            return
+
+        print(f"Running fact extraction for {session_id}...")
+        try:
+            facts = asyncio.run(extract_facts(data, cfg))
+        except Exception as e:
+            db.record_extraction(session_id, "error", str(e)[:500])
+            raise
+
+        inserted = db.insert_facts(facts, session_id=session_id)
+        db.record_extraction(session_id, "ok")
+        print(f"Extraction complete for {session_id}: {inserted} facts stored")
 
     def _run_post_session_diarization(self, session: dict):
         """Run diarization on the full session audio after recording stops."""

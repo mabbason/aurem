@@ -387,6 +387,7 @@ async function viewSession(sessionId) {
     data.segments.forEach(seg => appendSegment(seg));
 
     document.getElementById('export-bar').style.display = 'flex';
+    loadSpeakerMapping(sessionId);
     loadSessions();
 }
 
@@ -397,6 +398,7 @@ async function deleteSession(sessionId) {
         viewingSessionId = null;
         document.getElementById('transcript').innerHTML = '<p class="placeholder">Start a recording or select a past session to view the transcript.</p>';
         document.getElementById('export-bar').style.display = 'none';
+        document.getElementById('speaker-mapping').style.display = 'none';
     }
     loadSessions();
 }
@@ -874,6 +876,359 @@ async function loadFileResult() {
 function downloadFileResult(format) {
     if (!currentFileJobId) return;
     window.open(`/api/transcribe-file/${currentFileJobId}/result?format=${format}`, '_blank');
+}
+
+// --- Speaker mapping on session detail ---
+
+let peopleCache = [];
+
+async function loadSpeakerMapping(sessionId) {
+    const panel = document.getElementById('speaker-mapping');
+    const list = document.getElementById('speaker-mapping-list');
+    const statusEl = document.getElementById('extraction-status');
+    panel.style.display = 'block';
+    list.innerHTML = '<p class="empty">Loading...</p>';
+    statusEl.textContent = '';
+    statusEl.className = 'extraction-status';
+
+    try {
+        const [speakersResp, peopleResp] = await Promise.all([
+            fetch(`/api/sessions/${sessionId}/speakers`),
+            fetch('/api/people'),
+        ]);
+        const speakersData = await speakersResp.json();
+        peopleCache = await peopleResp.json();
+
+        if (speakersData.error) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        if (speakersData.extraction) {
+            const e = speakersData.extraction;
+            statusEl.textContent = `Facts: ${e.status}` + (e.error ? ` (${e.error.slice(0, 60)})` : '');
+            statusEl.className = `extraction-status ${e.status}`;
+        } else {
+            statusEl.textContent = 'Facts: not extracted yet';
+        }
+
+        if (!speakersData.speakers.length) {
+            list.innerHTML = '<p class="empty">No speakers detected</p>';
+            return;
+        }
+
+        list.innerHTML = speakersData.speakers.map(s => {
+            const options = ['<option value="">— Unassigned —</option>']
+                .concat(peopleCache.map(p => {
+                    const sel = p.id === s.person_id ? 'selected' : '';
+                    return `<option value="${p.id}" ${sel}>${escapeHtml(p.name)}</option>`;
+                }))
+                .concat(['<option value="__new__">+ Add new person...</option>'])
+                .join('');
+            const factText = s.fact_count > 0 ? `${s.fact_count} fact${s.fact_count === 1 ? '' : 's'}` : 'no facts';
+            return `
+                <div class="speaker-mapping-row" data-speaker="${escapeHtml(s.label)}">
+                    <span class="label">${escapeHtml(s.label)}</span>
+                    <select onchange="onSpeakerMappingChange('${sessionId}', '${escapeHtml(s.label)}', this)">
+                        ${options}
+                    </select>
+                    <span class="fact-count">${factText}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<p class="empty">Failed to load speakers</p>';
+    }
+}
+
+async function onSpeakerMappingChange(sessionId, label, select) {
+    const value = select.value;
+
+    if (value === '__new__') {
+        const name = prompt(`New person for ${label}:`);
+        if (!name || !name.trim()) {
+            select.value = '';
+            return;
+        }
+        try {
+            const resp = await fetch('/api/people', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim() }),
+            });
+            const person = await resp.json();
+            await saveSpeakerMapping(sessionId, label, person.id);
+            loadSpeakerMapping(sessionId);
+            showToast(`Created ${person.name}`);
+        } catch (e) {
+            showToast('Failed to create person');
+            select.value = '';
+        }
+        return;
+    }
+
+    const personId = value === '' ? null : parseInt(value, 10);
+    await saveSpeakerMapping(sessionId, label, personId);
+    // Refresh to update fact counts
+    loadSpeakerMapping(sessionId);
+}
+
+async function saveSpeakerMapping(sessionId, label, personId) {
+    await fetch(`/api/sessions/${sessionId}/speakers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings: { [label]: personId } }),
+    });
+}
+
+// --- People tab ---
+
+let viewingPersonId = null;
+
+async function loadPeople() {
+    const list = document.getElementById('people-list');
+    list.innerHTML = '<p class="empty">Loading...</p>';
+
+    try {
+        const resp = await fetch('/api/people');
+        const people = await resp.json();
+        peopleCache = people;
+
+        if (people.length === 0) {
+            list.innerHTML = '<p class="empty">No people yet. Add someone to start building the graph.</p>';
+            return;
+        }
+
+        list.innerHTML = people.map(p => {
+            const active = p.id === viewingPersonId ? ' active' : '';
+            const factBit = p.fact_count > 0 ? `${p.fact_count} facts` : 'no facts';
+            const last = p.last_seen
+                ? formatRelativeDate(p.last_seen)
+                : 'never';
+            return `
+                <div class="person-item${active}" onclick="viewPerson(${p.id})">
+                    <div class="person-name">${escapeHtml(p.name)}</div>
+                    <div class="person-meta">
+                        <span>${factBit}</span>
+                        <span>&middot;</span>
+                        <span>${last}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<p class="empty">Failed to load people</p>';
+    }
+}
+
+function formatRelativeDate(isoString) {
+    if (!isoString) return '';
+    // SQLite stores UTC without 'Z' suffix; treat as UTC
+    const s = isoString.endsWith('Z') || isoString.includes('+') ? isoString : isoString + 'Z';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now - d;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+    return `${Math.floor(diffDays / 365)}y ago`;
+}
+
+const CATEGORY_ORDER = ['professional', 'personal', 'commitment', 'preference', 'opinion', 'context'];
+const CATEGORY_LABELS = {
+    professional: 'Professional',
+    personal: 'Personal',
+    commitment: 'Commitments',
+    preference: 'Preferences',
+    opinion: 'Opinions',
+    context: 'Context',
+};
+
+async function viewPerson(personId) {
+    viewingPersonId = personId;
+    const detail = document.getElementById('person-detail');
+    detail.innerHTML = '<p class="placeholder">Loading...</p>';
+
+    try {
+        const resp = await fetch(`/api/people/${personId}`);
+        const data = await resp.json();
+        if (data.error) {
+            detail.innerHTML = `<p class="empty">${escapeHtml(data.error)}</p>`;
+            return;
+        }
+
+        const { person, facts_by_category, meeting_history, total_facts } = data;
+        const categoriesHtml = CATEGORY_ORDER
+            .filter(cat => facts_by_category[cat] && facts_by_category[cat].length > 0)
+            .map(cat => {
+                const facts = facts_by_category[cat];
+                const items = facts.map(f => {
+                    const manualBadge = f.source === 'manual'
+                        ? '<span class="fact-source-manual">manual</span>'
+                        : '';
+                    return `
+                        <div class="fact-item">
+                            <div class="fact-text">
+                                <div>${escapeHtml(f.text)}</div>
+                                <div class="fact-meta">
+                                    ${manualBadge}
+                                    ${f.confidence ? `conf ${Number(f.confidence).toFixed(2)}` : ''}
+                                    ${f.session_id ? `&middot; <a href="#" onclick="openSessionFromPerson('${f.session_id}'); return false">session</a>` : ''}
+                                </div>
+                            </div>
+                            <button class="btn-delete-fact" onclick="deleteFact(${f.id}, ${personId})" title="Delete">&times;</button>
+                        </div>
+                    `;
+                }).join('');
+                return `
+                    <div class="fact-category" data-category="${cat}">
+                        <div class="fact-category-header">${CATEGORY_LABELS[cat]} &middot; ${facts.length}</div>
+                        ${items}
+                    </div>
+                `;
+            }).join('');
+
+        const meetingsHtml = meeting_history.length
+            ? `<div class="meetings-list">${meeting_history.map(m => {
+                const date = m.started_at ? formatRelativeDate(m.started_at) : '';
+                const dur = formatDuration(m.duration);
+                return `
+                    <div class="meeting-item" onclick="openSessionFromPerson('${m.session_id}')">
+                        <div class="meeting-title">${escapeHtml(m.title)}</div>
+                        <div class="meeting-meta">${date} &middot; ${dur}</div>
+                    </div>
+                `;
+            }).join('')}</div>`
+            : '<p class="empty-state">No meeting history yet.</p>';
+
+        detail.innerHTML = `
+            <div class="person-detail-header">
+                <h1>${escapeHtml(person.name)}</h1>
+                <div class="person-actions">
+                    <button class="btn btn-sm" onclick="openAddFactModal(${personId})">+ Fact</button>
+                    <button class="btn btn-sm" onclick="deletePerson(${personId})">Delete</button>
+                </div>
+            </div>
+            <div class="person-notes">
+                <label>Notes</label>
+                <textarea id="person-notes-${personId}"
+                    onblur="savePersonNotes(${personId})"
+                    placeholder="Free-form notes about ${escapeHtml(person.name)}...">${escapeHtml(person.notes || '')}</textarea>
+            </div>
+            <div class="detail-section">
+                <h2>Facts (${total_facts})</h2>
+                ${categoriesHtml || '<p class="empty-state">No facts yet. Add one manually or extract from a session.</p>'}
+            </div>
+            <div class="detail-section">
+                <h2>Meeting History</h2>
+                ${meetingsHtml}
+            </div>
+        `;
+        loadPeople();
+    } catch (e) {
+        detail.innerHTML = '<p class="empty">Failed to load person</p>';
+    }
+}
+
+async function savePersonNotes(personId) {
+    const el = document.getElementById(`person-notes-${personId}`);
+    if (!el) return;
+    const notes = el.value;
+    await fetch(`/api/people/${personId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+    });
+}
+
+async function deletePerson(personId) {
+    if (!confirm('Delete this person? Their facts will be unlinked but not deleted.')) return;
+    await fetch(`/api/people/${personId}`, { method: 'DELETE' });
+    viewingPersonId = null;
+    document.getElementById('person-detail').innerHTML =
+        '<p class="placeholder">Select a person to see their profile, or add someone new.</p>';
+    loadPeople();
+}
+
+async function deleteFact(factId, personId) {
+    if (!confirm('Delete this fact?')) return;
+    await fetch(`/api/facts/${factId}`, { method: 'DELETE' });
+    viewPerson(personId);
+}
+
+function openSessionFromPerson(sessionId) {
+    switchTab('record');
+    viewSession(sessionId);
+}
+
+// --- Add Person Modal ---
+
+function openAddPersonModal() {
+    document.getElementById('new-person-name').value = '';
+    document.getElementById('new-person-notes').value = '';
+    document.getElementById('add-person-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('new-person-name').focus(), 50);
+}
+
+function closeAddPersonModal() {
+    document.getElementById('add-person-modal').style.display = 'none';
+}
+
+async function createPerson() {
+    const name = document.getElementById('new-person-name').value.trim();
+    const notes = document.getElementById('new-person-notes').value.trim();
+    if (!name) {
+        showToast('Name required');
+        return;
+    }
+    const resp = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, notes }),
+    });
+    const person = await resp.json();
+    closeAddPersonModal();
+    await loadPeople();
+    viewPerson(person.id);
+}
+
+// --- Add Fact Modal ---
+
+let addFactPersonId = null;
+
+function openAddFactModal(personId) {
+    addFactPersonId = personId;
+    document.getElementById('new-fact-text').value = '';
+    document.getElementById('new-fact-category').value = 'context';
+    document.getElementById('add-fact-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('new-fact-text').focus(), 50);
+}
+
+function closeAddFactModal() {
+    document.getElementById('add-fact-modal').style.display = 'none';
+    addFactPersonId = null;
+}
+
+async function createFact() {
+    if (!addFactPersonId) return;
+    const text = document.getElementById('new-fact-text').value.trim();
+    const category = document.getElementById('new-fact-category').value;
+    if (!text) {
+        showToast('Fact text required');
+        return;
+    }
+    await fetch(`/api/people/${addFactPersonId}/facts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, category }),
+    });
+    const personId = addFactPersonId;
+    closeAddFactModal();
+    viewPerson(personId);
 }
 
 // Initialize
